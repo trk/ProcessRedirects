@@ -14,6 +14,22 @@
 		const labels = jsConfig.labels || {};
 		const localizedCodeDescriptions = jsConfig.codeDescriptions || {};
 
+		/**
+		 * Helper to interpolate %d, %1$d, %2$d format specifiers in translation strings
+		 */
+		function formatString(template, ...args) {
+			if (!template) return '';
+			let argIdx = 0;
+			return template.replace(/%(\d+)\$d|%d/g, function(match, pos) {
+				if (pos) {
+					const idx = parseInt(pos, 10) - 1;
+					return args[idx] !== undefined ? args[idx] : match;
+				}
+				const val = args[argIdx++];
+				return val !== undefined ? val : match;
+			});
+		}
+
 		// =========================================================================
 		// 1. EDIT / ADD FORM: Smart URL Normalization & Validation
 		// =========================================================================
@@ -195,146 +211,339 @@
 		}
 
 		// =========================================================================
-		// 2. ADMIN TABLE: Instant Search, Select-All, and Bulk Delete
+		// 2. ADMIN TABLE: Pagination, Live Search across All Rows, and Bulk Delete
 		// =========================================================================
 		const $redirectsForm = $('#redirects_form');
 		const $searchInput = $('#redirects_table_search');
-		const $searchCount = $('#redirects_search_count');
+		const $pageSizeSelect = $('#redirects_page_size');
+		const $paginationContainer = $('#redirects_pagination_container');
 		const $selectAll = $('#select_all_redirects');
 
 		if ($redirectsForm.length) {
 
 			const $table = $redirectsForm.find('table.AdminDataTable, table.uk-table').first();
-			const $rows = $table.find('tbody tr');
-			const totalRows = $rows.length;
+			const $tbody = $table.find('tbody');
+			const $allRows = $tbody.find('tr');
+			const totalRows = $allRows.length;
 
-			// --- A. Instant Client-Side Table Search ---
-			if ($searchInput.length && $rows.length) {
+			if (totalRows) {
 
-				let searchTimeout = null;
+				// Build container structure for page info and pagination controls
+				const $pageInfo = $('<div class="redirects-page-info"></div>');
+				const $paginationNav = $('<ul class="uk-pagination uk-margin-remove"></ul>');
+				$paginationContainer.empty().append($pageInfo).append($paginationNav);
 
-				function filterTable() {
-					const query = $searchInput.val().trim().toLowerCase();
-					let visibleCount = 0;
+				// Pre-cache row text for fast sub-millisecond multi-term search
+				const rowCache = [];
+				$allRows.each(function() {
+					const $tr = $(this);
+					// Grab text content from all data cells except the final checkbox cell
+					const searchContent = $tr.children('td').not(':last-child').text().toLowerCase();
+					rowCache.push({
+						$tr: $tr,
+						trEl: this,
+						text: searchContent
+					});
+				});
 
-					if (!query) {
-						$rows.show();
-						$searchCount.hide().text('');
-						$table.find('.redirects-no-results').remove();
+				let matchingRows = rowCache.slice();
+				let currentPage = 1;
+
+				// Remember user's page size preference in localStorage
+				const STORAGE_KEY = 'ProcessRedirects_pageSize';
+				const savedPageSize = localStorage.getItem(STORAGE_KEY);
+				if (savedPageSize && ['10', '25', '50', '100', 'all'].indexOf(savedPageSize) !== -1) {
+					$pageSizeSelect.val(savedPageSize);
+				}
+
+				function getPageSize() {
+					return $pageSizeSelect.val() || '50';
+				}
+
+				/**
+				 * Generate sliding-window page numbers with ellipsis
+				 */
+				function getPaginationPageNumbers(current, total) {
+					if (total <= 7) {
+						const pages = [];
+						for (let i = 1; i <= total; i++) pages.push(i);
+						return pages;
+					}
+
+					if (current <= 4) {
+						return [1, 2, 3, 4, 5, '...', total];
+					}
+
+					if (current >= total - 3) {
+						return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+					}
+
+					return [1, '...', current - 1, current, current + 1, '...', total];
+				}
+
+				/**
+				 * Re-render table slice, info summary, and pagination buttons
+				 */
+				function render() {
+					const totalMatching = matchingRows.length;
+					const pageSizeVal = getPageSize();
+					const isAll = (pageSizeVal === 'all');
+					const pageSize = isAll ? Math.max(totalMatching, 1) : (parseInt(pageSizeVal, 10) || 50);
+					const totalPages = isAll ? 1 : Math.max(1, Math.ceil(totalMatching / pageSize));
+
+					if (currentPage > totalPages) currentPage = totalPages;
+					if (currentPage < 1) currentPage = 1;
+
+					const startIndex = (currentPage - 1) * pageSize;
+					const endIndex = Math.min(startIndex + pageSize, totalMatching);
+
+					// 1. Manage row visibility
+					$tbody.find('.redirects-no-results').remove();
+
+					if (totalMatching === 0) {
+						$allRows.hide();
+						const colSpan = $table.find('thead th').length || 7;
+						const noResultsMsg = labels.noResults || 'No redirects matching your search.';
+						const $noResultsRow = $('<tr class="redirects-no-results"><td class="uk-text-center uk-text-muted" style="padding: 28px;"></td></tr>');
+						$noResultsRow.find('td').attr('colspan', colSpan).text(noResultsMsg);
+						$tbody.append($noResultsRow);
+
+						$pageInfo.text(noResultsMsg);
+						$paginationNav.empty();
 						updateSelectAllState();
 						return;
 					}
 
-					$rows.each(function() {
-						const $row = $(this);
-						// Search text across all cells in the row
-						const rowText = $row.text().toLowerCase();
-						const matches = rowText.indexOf(query) !== -1;
-						if (matches) {
-							$row.show();
-							visibleCount++;
-						} else {
-							$row.hide();
-						}
-					});
+					// Fast batch display: hide all rows, show only current page slice
+					$allRows.hide();
+					const visibleTrElements = [];
+					for (let i = startIndex; i < endIndex; i++) {
+						visibleTrElements.push(matchingRows[i].trEl);
+					}
+					$(visibleTrElements).show();
 
-					// Manage "No matching redirects found" row
-					$table.find('.redirects-no-results').remove();
-					if (visibleCount === 0) {
-						const colSpan = $table.find('thead th').length || 7;
-						const noResultsMsg = labels.noResults || 'No redirects matching your search.';
-						const $noResultsRow = $('<tr class="redirects-no-results"><td class="uk-text-center uk-text-muted" style="padding: 24px;"></td></tr>');
-						$noResultsRow.find('td').attr('colspan', colSpan).text(noResultsMsg);
-						$table.find('tbody').append($noResultsRow);
+					// 2. Update page info text
+					const isFiltered = (totalMatching < totalRows);
+					let infoText = '';
+					if (isAll || totalMatching <= pageSize) {
+						if (isFiltered) {
+							const tmpl = labels.showingAllFiltered || 'Showing all %1$d matching (filtered from %2$d)';
+							infoText = formatString(tmpl, totalMatching, totalRows);
+						} else {
+							const tmpl = labels.showingAll || 'Showing all %d redirects';
+							infoText = formatString(tmpl, totalRows);
+						}
+					} else {
+						const displayStart = startIndex + 1;
+						const displayEnd = endIndex;
+						if (isFiltered) {
+							const tmpl = labels.showingRangeFiltered || 'Showing %1$d–%2$d of %3$d matching (filtered from %4$d)';
+							infoText = formatString(tmpl, displayStart, displayEnd, totalMatching, totalRows);
+						} else {
+							const tmpl = labels.showingRange || 'Showing %1$d–%2$d of %3$d redirects';
+							infoText = formatString(tmpl, displayStart, displayEnd, totalRows);
+						}
+					}
+					$pageInfo.text(infoText);
+
+					// 3. Render Pagination Navigation links
+					$paginationNav.empty();
+					if (totalPages > 1) {
+						// Previous button
+						const prevLabel = labels.previous || 'Previous';
+						if (currentPage > 1) {
+							$paginationNav.append(
+								$('<li></li>').append(
+									$('<a href="#"></a>').attr('data-page', currentPage - 1).html('<i class="fa fa-angle-left" aria-hidden="true"></i> ' + prevLabel)
+								)
+							);
+						} else {
+							$paginationNav.append(
+								$('<li class="uk-disabled"></li>').append(
+									$('<span></span>').html('<i class="fa fa-angle-left" aria-hidden="true"></i> ' + prevLabel)
+								)
+							);
+						}
+
+						// Page numbers with ellipsis
+						const pages = getPaginationPageNumbers(currentPage, totalPages);
+						for (let i = 0; i < pages.length; i++) {
+							const p = pages[i];
+							if (p === '...') {
+								$paginationNav.append($('<li class="uk-disabled"><span>…</span></li>'));
+							} else if (p === currentPage) {
+								$paginationNav.append(
+									$('<li class="uk-active"></li>').append(
+										$('<span aria-current="page"></span>').text(p)
+									)
+								);
+							} else {
+								$paginationNav.append(
+									$('<li></li>').append(
+										$('<a href="#"></a>').attr('data-page', p).text(p)
+									)
+								);
+							}
+						}
+
+						// Next button
+						const nextLabel = labels.next || 'Next';
+						if (currentPage < totalPages) {
+							$paginationNav.append(
+								$('<li></li>').append(
+									$('<a href="#"></a>').attr('data-page', currentPage + 1).html(nextLabel + ' <i class="fa fa-angle-right" aria-hidden="true"></i>')
+								)
+							);
+						} else {
+							$paginationNav.append(
+								$('<li class="uk-disabled"></li>').append(
+									$('<span></span>').html(nextLabel + ' <i class="fa fa-angle-right" aria-hidden="true"></i>')
+								)
+							);
+						}
 					}
 
-					$searchCount.text(visibleCount + ' / ' + totalRows).show();
+					// 4. Update select-all checkbox for current visible slice
 					updateSelectAllState();
+				}
+
+				// --- Search Filtering Across ALL Rows ---
+				let searchTimeout = null;
+
+				function filterRows() {
+					const query = $searchInput.val().trim().toLowerCase();
+
+					if (!query) {
+						matchingRows = rowCache.slice();
+					} else {
+						const terms = query.split(/\s+/).filter(Boolean);
+						matchingRows = rowCache.filter(function(item) {
+							for (let i = 0; i < terms.length; i++) {
+								if (item.text.indexOf(terms[i]) === -1) {
+									return false;
+								}
+							}
+							return true;
+						});
+					}
+
+					currentPage = 1;
+					render();
 				}
 
 				$searchInput.on('input', function() {
 					clearTimeout(searchTimeout);
-					searchTimeout = setTimeout(filterTable, 100);
+					searchTimeout = setTimeout(filterRows, 120);
 				});
 
-				// Escape key clears search
 				$searchInput.on('keydown', function(e) {
 					if (e.key === 'Escape') {
 						$(this).val('');
-						filterTable();
+						filterRows();
 					}
 				});
-			}
 
-			// --- B. Master "Select All" Toggle ---
-			function getCheckboxes() {
-				return $rows.filter(':visible').find('input[name="delete[]"]');
-			}
+				// --- Page Size Selection ---
+				$pageSizeSelect.on('change', function() {
+					const val = $(this).val();
+					try {
+						localStorage.setItem(STORAGE_KEY, val);
+					} catch (e) {}
+					currentPage = 1;
+					render();
+				});
 
-			function updateSelectAllState() {
-				if (!$selectAll.length) return;
-				const $visibleCheckboxes = getCheckboxes();
-				const totalVisible = $visibleCheckboxes.length;
-				const checkedVisible = $visibleCheckboxes.filter(':checked').length;
+				// --- Pagination Click Handling ---
+				$paginationNav.on('click', 'a[data-page]', function(e) {
+					e.preventDefault();
+					const targetPage = parseInt($(this).attr('data-page'), 10);
+					if (targetPage && targetPage !== currentPage) {
+						currentPage = targetPage;
+						render();
 
-				if (totalVisible === 0 || checkedVisible === 0) {
-					$selectAll.prop('checked', false);
-					$selectAll.prop('indeterminate', false);
-				} else if (checkedVisible === totalVisible) {
-					$selectAll.prop('checked', true);
-					$selectAll.prop('indeterminate', false);
-				} else {
-					$selectAll.prop('checked', false);
-					$selectAll.prop('indeterminate', true);
+						// Smooth scroll to top of table if user scrolled down
+						const tableTop = $table.offset().top - 70;
+						if ($(window).scrollTop() > tableTop) {
+							$('html, body').animate({ scrollTop: tableTop }, 150);
+						}
+					}
+				});
+
+				// --- Master "Select All" Toggle for Current Page ---
+				function getVisibleCheckboxes() {
+					return $allRows.filter(':visible').find('input[name="delete[]"]');
 				}
-			}
 
-			if ($selectAll.length) {
-				$selectAll.on('change', function() {
-					const isChecked = $(this).is(':checked');
-					const $visibleCheckboxes = getCheckboxes();
+				function updateSelectAllState() {
+					if (!$selectAll.length) return;
+					const $visibleCheckboxes = getVisibleCheckboxes();
+					const totalVisible = $visibleCheckboxes.length;
+					const checkedVisible = $visibleCheckboxes.filter(':checked').length;
 
-					$visibleCheckboxes.prop('checked', isChecked).trigger('change');
-				});
-
-				$redirectsForm.on('change', 'input[name="delete[]"]', function() {
-					const $row = $(this).closest('tr');
-					$row.toggleClass('row-selected-for-delete', $(this).is(':checked'));
-					updateSelectAllState();
-				});
-
-			}
-
-			// --- C. Bulk Delete Confirmation ---
-			let deleteConfirmed = false;
-			$redirectsForm.on('submit', function(event) {
-				if (deleteConfirmed) return;
-
-				const $checked = $redirectsForm.find('input[name="delete[]"]:checked');
-				if (!$checked.length) {
-					event.preventDefault();
-					const alertMsg = labels.alertSelect || $redirectsForm.attr('data-alert-select') || 'You need to select at least one item to delete first.';
-					if (ProcessWire && ProcessWire.alert) {
-						ProcessWire.alert(alertMsg);
+					if (totalVisible === 0 || checkedVisible === 0) {
+						$selectAll.prop('checked', false);
+						$selectAll.prop('indeterminate', false);
+					} else if (checkedVisible === totalVisible) {
+						$selectAll.prop('checked', true);
+						$selectAll.prop('indeterminate', false);
 					} else {
-						alert(alertMsg);
+						$selectAll.prop('checked', false);
+						$selectAll.prop('indeterminate', true);
 					}
-					return;
 				}
 
-				event.preventDefault();
-				const confirmMsg = labels.confirmDelete || $redirectsForm.attr('data-confirm-delete') || 'Are you sure you want to delete selected redirects?';
+				if ($selectAll.length) {
+					$selectAll.on('change', function() {
+						const isChecked = $(this).is(':checked');
+						const $visibleCheckboxes = getVisibleCheckboxes();
+						$visibleCheckboxes.prop('checked', isChecked).trigger('change');
+					});
 
-				if (ProcessWire && ProcessWire.confirm) {
-					ProcessWire.confirm(confirmMsg, function() {
+					$redirectsForm.on('change', 'input[name="delete[]"]', function() {
+						const $row = $(this).closest('tr');
+						$row.toggleClass('row-selected-for-delete', $(this).is(':checked'));
+						updateSelectAllState();
+					});
+				}
+
+				// --- Bulk Delete Confirmation ---
+				let deleteConfirmed = false;
+				$redirectsForm.on('submit', function(event) {
+					if (deleteConfirmed) return;
+
+					const $checked = $redirectsForm.find('input[name="delete[]"]:checked');
+					const count = $checked.length;
+					if (!count) {
+						event.preventDefault();
+						const alertMsg = labels.alertSelect || $redirectsForm.attr('data-alert-select') || 'You need to select at least one item to delete first.';
+						if (ProcessWire && ProcessWire.alert) {
+							ProcessWire.alert(alertMsg);
+						} else {
+							alert(alertMsg);
+						}
+						return;
+					}
+
+					event.preventDefault();
+					const confirmTemplate = count > 1
+						? (labels.confirmDeleteCount || 'Are you sure you want to delete %d selected redirects?')
+						: (labels.confirmDelete || $redirectsForm.attr('data-confirm-delete') || 'Are you sure you want to delete selected redirects?');
+					const confirmMsg = formatString(confirmTemplate, count);
+
+					if (ProcessWire && ProcessWire.confirm) {
+						ProcessWire.confirm(confirmMsg, function() {
+							deleteConfirmed = true;
+							$redirectsForm.trigger('submit');
+						});
+					} else if (window.confirm(confirmMsg)) {
 						deleteConfirmed = true;
 						$redirectsForm.trigger('submit');
-					});
-				} else if (window.confirm(confirmMsg)) {
-					deleteConfirmed = true;
-					$redirectsForm.trigger('submit');
-				}
-			});
+					}
+				});
+
+				// Initial Render
+				render();
+			}
 		}
 
 	});

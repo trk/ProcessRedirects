@@ -282,7 +282,16 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 				. '<input type="search" id="redirects_table_search" class="uk-input uk-form-small" placeholder="' . $this->_('Search redirects...') . '" autocomplete="off" aria-label="' . $this->_('Search redirects') . '">'
 				. '<i class="fa fa-search redirects-search-icon" aria-hidden="true"></i>'
 				. '</div>'
-				. '<span id="redirects_search_count" class="uk-text-muted uk-text-small"></span>'
+				. '<div class="redirects-controls-right">'
+				. '<label for="redirects_page_size" class="uk-form-label uk-text-small">' . $this->_('Show') . ':</label>'
+				. '<select id="redirects_page_size" class="uk-select uk-form-small" aria-label="' . $this->_('Items per page') . '">'
+				. '<option value="10">10</option>'
+				. '<option value="25">25</option>'
+				. '<option value="50" selected>50</option>'
+				. '<option value="100">100</option>'
+				. '<option value="all">' . $this->_('All') . '</option>'
+				. '</select>'
+				. '</div>'
 				. '</div>';
 		}
 
@@ -297,6 +306,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			. '<div class="uk-overflow-auto pw-table-panel">'
 			. $table->render()
 			. '</div>'
+			. ($row_count ? '<div id="redirects_pagination_container" class="redirects-pagination-wrap uk-clearfix"></div>' : '')
 			. '<div class="pw-module-actions uk-margin-top uk-clearfix">'
 			. $button_add->render()
 			. $button_import->render()
@@ -1009,7 +1019,14 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 				'loopError' => $this->_('Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).'),
 				'alertSelect' => $this->_('You need to select at least one item to delete first.'),
 				'confirmDelete' => $this->_('Are you sure you want to delete selected redirects?'),
+				'confirmDeleteCount' => $this->_('Are you sure you want to delete %d selected redirects?'),
 				'noResults' => $this->_('No redirects matching your search.'),
+				'showingAll' => $this->_('Showing all %d redirects'),
+				'showingAllFiltered' => $this->_('Showing all %1$d matching (filtered from %2$d)'),
+				'showingRange' => $this->_('Showing %1$d–%2$d of %3$d redirects'),
+				'showingRangeFiltered' => $this->_('Showing %1$d–%2$d of %3$d matching (filtered from %4$d)'),
+				'previous' => $this->_('Previous'),
+				'next' => $this->_('Next'),
 			],
 		]);
 	}
