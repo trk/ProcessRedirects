@@ -68,6 +68,9 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			'autoload' => true,
 			'singular' => true,
 			'permission' => 'redirects-admin',
+			'permissions' => [
+				'redirects-admin' => 'Manage URL redirects',
+			],
 			'icon' => 'exchange',
 			'requires' => [
 				'ProcessWire>=3.0.112',
@@ -182,9 +185,12 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		// pass localized configuration to JS
 		$this->setupJsConfig();
 
-		// load admin.js
+		// load admin.js and admin styles
 		if ($this->config->scripts) {
 			$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
+		}
+		if ($this->config->styles) {
+			$this->config->styles->add($this->config->urls->ProcessRedirects . 'ProcessRedirects.css');
 		}
 
 		/** @var MarkupAdminDataTable */
@@ -214,15 +220,15 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			$isActive = !isset($redirect['active']) || (int) $redirect['active'] === 1;
 
 			$statusBadge = $isActive
-				? '<span class="uk-badge uk-badge-success" style="background:#32d296;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;display:inline-block;">' . $this->_('Active') . '</span>'
-				: '<span class="uk-badge uk-badge-muted" style="background:#e5e5e5;color:#666;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600;display:inline-block;">' . $this->_('Inactive') . '</span>';
+				? '<span class="uk-label uk-label-success redirect-status-badge redirect-status-active">' . $this->_('Active') . '</span>'
+				: '<span class="uk-label redirect-status-badge redirect-status-inactive">' . $this->_('Inactive') . '</span>';
 
 			// output in table rows with edit link and delete checkbox
 			$table->row([
 				$statusBadge,
 				'<a href="edit/?id=' . (int) $redirect['id'] . '">' . $this->sanitizer->entities($redirect['redirect_from']) . '</a>',
 				'<a href="edit/?id=' . (int) $redirect['id'] . '">' . $this->sanitizer->entities($redirect['redirect_to']) . '</a>',
-				'<span class="ui-priority-secondary">' . $code . '</span>',
+				'<span class="redirect-code-chip">' . $code . '</span>',
 				'<a target="_blank" class="pw-panel pw-panel-right" data-panel-width="75%" href="' . $rootUrl . $redirect['redirect_from'] . '">' . $this->_('Test') . ' <i class="fa fa-external-link" aria-hidden="true"></i></a>',
 				(int) $redirect['counter'],
 				'<input type="checkbox" name="delete[]" value="' . (int) $redirect['id'] . '" class="redirect-delete-checkbox">',
@@ -271,29 +277,34 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 
 		$search_bar = '';
 		if ($row_count) {
-			$search_bar = '<div class="redirects-search-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">'
-				. '<div style="position:relative;max-width:320px;width:100%;">'
-				. '<input type="search" id="redirects_table_search" class="uk-input uk-form-small" placeholder="' . $this->_('Search redirects...') . '" autocomplete="off" aria-label="' . $this->_('Search redirects') . '" style="padding-left:28px;width:100%;border-radius:4px;">'
-				. '<i class="fa fa-search" aria-hidden="true" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#999;font-size:12px;"></i>'
+			$search_bar = '<div class="redirects-search-bar">'
+				. '<div class="redirects-search-wrap">'
+				. '<input type="search" id="redirects_table_search" class="uk-input uk-form-small" placeholder="' . $this->_('Search redirects...') . '" autocomplete="off" aria-label="' . $this->_('Search redirects') . '">'
+				. '<i class="fa fa-search redirects-search-icon" aria-hidden="true"></i>'
 				. '</div>'
-				. '<span id="redirects_search_count" class="uk-text-muted uk-text-small" style="font-size:12px;color:#777;"></span>'
+				. '<span id="redirects_search_count" class="uk-text-muted uk-text-small"></span>'
 				. '</div>';
 		}
 
 		$label_alert_select = $this->_('You need to select at least one item to delete first.');
 		$label_confirm_delete = $this->_('Are you sure you want to delete selected redirects?');
-		return '<form id="redirects_form" action="./delete/" method="post" class="uk-margin-bottom"'
+		return '<form id="redirects_form" action="./delete/" method="post" class="ProcessRedirects uk-margin-bottom"'
 			. ' data-alert-select="' . $label_alert_select . '"'
 			. ' data-confirm-delete="' . $label_confirm_delete . '"'
 			. '>'
 			. $this->session->CSRF->renderInput()
 			. $search_bar
+			. '<div class="uk-overflow-auto pw-table-panel">'
 			. $table->render()
+			. '</div>'
+			. '<div class="pw-module-actions uk-margin-top uk-clearfix">'
 			. $button_add->render()
 			. $button_import->render()
 			. ($button_delete ? $button_delete->render() : '')
 			. ($button_export ? $button_export->render() : '')
+			. '</div>'
 			. '</form>';
+
 	}
 
 	/**
@@ -319,10 +330,14 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		// pass localized configuration to JS
 		$this->setupJsConfig();
 
-		// load admin.js
+		// load admin.js and admin styles
 		if ($this->config->scripts) {
 			$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
 		}
+		if ($this->config->styles) {
+			$this->config->styles->add($this->config->urls->ProcessRedirects . 'ProcessRedirects.css');
+		}
+
 
 		// default settings
 		$id = (int) $this->input->get->id ?: 0;
@@ -354,6 +369,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			$code = $this->sanitizeRedirectCode($redirect['redirect_code'] ?? null, $code);
 			$active = isset($redirect['active']) ? (int) $redirect['active'] : 1;
 
+			$to = $this->makeRedirectToURL($rawTo);
 			if (strpos($rawTo, '^') === 0) {
 				$targetType = 'internal';
 				$targetPageId = (int) substr($rawTo, 1);
@@ -361,21 +377,17 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 				if ($target_page->id) {
 					$targetPageUrl = $target_page->url;
 				}
-				$to = '';
 			} else if (strpos($rawTo, '/') === 0) {
 				$target_page = $this->pages->get($rawTo);
 				if ($target_page->id && !$target_page->isTrash()) {
 					$targetType = 'internal';
 					$targetPageId = $target_page->id;
 					$targetPageUrl = $target_page->url;
-					$to = '';
 				} else {
 					$targetType = 'external';
-					$to = $rawTo;
 				}
 			} else {
 				$targetType = 'external';
-				$to = $rawTo;
 			}
 		}
 
@@ -422,12 +434,12 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$field = $this->modules->get('InputfieldPageListSelect');
 		$field->label = $this->_('Target Page');
 		$field->attr('id+name', 'select_page');
-		$field->startLabel = $this->_('Select Page');
 		$field->parent_id = 0; // tell it to start from homepage
 		$field->value = $targetPageId;
 		$field->showIf = 'target_type=internal';
-		if ($targetPageUrl) {
+		if ($targetPageUrl && isset($target_page) && $target_page->id) {
 			$field->attr('data-url', $targetPageUrl);
+			$field->description = sprintf($this->_('Selected target page: %s (%s)'), $target_page->title, $targetPageUrl);
 		}
 		$form->add($field);
 
@@ -1340,6 +1352,14 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		");
 		$this->modules->saveConfig($this, 'schema_version', self::SCHEMA_VERSION);
 		$this->modules->saveConfig($this, 'default_redirect_code', 301);
+
+		// Ensure redirects-admin permission exists
+		$permission = $this->wire()->permissions->get('redirects-admin');
+		if (!$permission->id) {
+			$permission = $this->wire()->permissions->add('redirects-admin');
+			$permission->title = $this->_('Manage URL redirects');
+			$this->wire()->permissions->save($permission);
+		}
 	}
 
 	/**
@@ -1350,6 +1370,12 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	public function ___uninstall(): void {
 		parent::___uninstall();
 		$this->wire()->database->query("DROP TABLE IF EXISTS " . self::TABLE_NAME);
+
+		// Delete redirects-admin permission if it exists
+		$permission = $this->wire()->permissions->get('redirects-admin');
+		if ($permission->id) {
+			$this->wire()->permissions->delete($permission);
+		}
 	}
 }
 

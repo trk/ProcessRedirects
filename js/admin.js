@@ -58,10 +58,19 @@
 
 		let selectedPageUrl = $pageSelect.attr('data-url') || '';
 		if ($pageSelect.length) {
-			// Track selected internal page URL for loop prevention
+			// Track selected internal page URL for loop prevention and external field sync
 			$pageSelect.on('pageSelected', function(event, data) {
 				if (data && data.url && data.url.length) {
 					selectedPageUrl = data.url;
+					if (!$toInput.val() || $('input[name="target_type"]:checked').val() === 'internal') {
+						$toInput.val(data.url);
+					}
+				}
+			});
+
+			$('input[name="target_type"]').on('change', function() {
+				if ($(this).val() === 'external' && !$toInput.val() && selectedPageUrl) {
+					$toInput.val(selectedPageUrl);
 				}
 			});
 		}
@@ -95,8 +104,9 @@
 			// Merge server-provided localized explanations over defaults
 			const codeDescriptions = $.extend(true, {}, defaultCodeDescriptions, localizedCodeDescriptions);
 
-			const $helpContainer = $('<div id="redirect_code_help" class="uk-margin-small-top" style="font-size: 12px; line-height: 1.4; color: #666; max-width: 600px;"></div>');
+			const $helpContainer = $('<div id="redirect_code_help" class="uk-margin-small-top uk-text-small"></div>');
 			$codeSelect.after($helpContainer);
+
 
 			function updateCodeHelp() {
 				const selectedCode = parseInt($codeSelect.val(), 10);
@@ -289,13 +299,10 @@
 
 				$redirectsForm.on('change', 'input[name="delete[]"]', function() {
 					const $row = $(this).closest('tr');
-					if ($(this).is(':checked')) {
-						$row.css('background-color', 'rgba(230, 80, 80, 0.08)');
-					} else {
-						$row.css('background-color', '');
-					}
+					$row.toggleClass('row-selected-for-delete', $(this).is(':checked'));
 					updateSelectAllState();
 				});
+
 			}
 
 			// --- C. Bulk Delete Confirmation ---
