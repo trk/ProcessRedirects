@@ -61,8 +61,7 @@ When redesigning or migrating websites, old URLs frequently change or become obs
 - **Batch CSV Import & Export:** Bulk import hundreds of redirects via direct copy-paste or file upload, and export them as CSV with full status and active flags.
 - **Built-in Live Testing:** Test any redirect directly in a slide-out panel from the admin data table.
 - **Hit Tracking:** Keep track of redirect popularity and monitor traffic migration with the built-in hit counter.
-- **Role-Based Access Control:** Protect redirect management with the `redirects-admin` permission.
-- **Internationalization (i18n):** Multi-language ready with bundled Finnish and English translations.
+- **Internationalization (i18n):** Multi-language ready with bundled translations for Turkish (`tr`), German (`de`), Russian (`ru`), French (`fr`), Spanish (`es`), Finnish (`fi`), and English (`en`).
 
 ---
 
@@ -330,7 +329,7 @@ Yes! Enter the query string in the `Redirect From` field, for example: `/index.p
   - Server-side infinite redirect loop detection in `executeSave()` and `executeSavearray()`.
   - Flexible CSV delimiter auto-detection (`,`, `;`, `\t`) for cross-locale spreadsheet imports.
   - Full round-trip 4-column CSV import/export (`redirect_from,redirect_to,redirect_code,active`).
-  - Added Finnish translations for status, search, and loop prevention.
+  - Added comprehensive localization support with bundled translations for Turkish (`tr`), German (`de`), Russian (`ru`), French (`fr`), Spanish (`es`), and Finnish (`fi`).
 - **2.3.0**
   - Added support for selectable HTTP redirect status codes (`301`, `302`, `303`, `307`, `308`) per redirect and global default setting ([#9](https://github.com/teppokoivula/ProcessRedirects/issues/9)).
   - Upgraded table storage engine to **InnoDB** with automatic migration from MyISAM ([#26](https://github.com/teppokoivula/ProcessRedirects/issues/26)).
