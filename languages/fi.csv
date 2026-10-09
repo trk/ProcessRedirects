@@ -75,3 +75,10 @@ Found (Temporary),Löytyi (väliaikainen),,site/modules/ProcessRedirects/Process
 See Other,Katso toinen osoite,,site/modules/ProcessRedirects/ProcessRedirects.module,4f7c6641e26721a86ef5a90cdeacd543
 Temporary Redirect,Väliaikainen ohjaus,,site/modules/ProcessRedirects/ProcessRedirects.module,a900f342ef404f4a309c8468fa20bdb0
 Permanent Redirect,Pysyvä ohjaus,,site/modules/ProcessRedirects/ProcessRedirects.module,1406b3e4aabfd0bac98486b09cb16994
+Status,Tila,,site/modules/ProcessRedirects/ProcessRedirects.module,52f5e0bc3859bc522755dd868935bfa4
+Active,Aktiivinen,,site/modules/ProcessRedirects/ProcessRedirects.module,4d3d769b812b6faa6b76e1a8abaece2d
+Inactive,Ei käytössä,,site/modules/ProcessRedirects/ProcessRedirects.module,3a886f78f54ef4826f03e6feebef9ef2
+Search redirects...,Etsi ohjauksia...,,site/modules/ProcessRedirects/ProcessRedirects.module,c78c2eef2978a3c8cb3a8904791e843f
+Select all redirects,Valitse kaikki ohjaukset,,site/modules/ProcessRedirects/ProcessRedirects.module,94b7936a2ee1c8dc6e9b469950d890cf
+"Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).","Lähdeosoite ja kohdeosoite eivät voi olla samat (aiheuttaisi ikuisen ohjaussilmukan).",,site/modules/ProcessRedirects/ProcessRedirects.module,025dc4b09b5550aef9dfb7d8dca8ce22
+"Self-redirect loop detected, redirect not added: %s","Ikuinen ohjaussilmukka havaittu, ohjausta ei lisätty: %s",,site/modules/ProcessRedirects/ProcessRedirects.module,429f4ae00e62be5f30cb79d854eb132a

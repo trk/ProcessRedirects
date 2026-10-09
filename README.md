@@ -47,12 +47,18 @@ When redesigning or migrating websites, old URLs frequently change or become obs
 ## Key Features
 
 - **Full HTTP Status Code Support:** Select between `301`, `302`, `303`, `307`, and `308` per redirect or set a global default.
+- **Active / Inactive Status Toggle:** Temporarily disable individual redirects without deleting them.
+- **Instant Client-Side Table Search:** Filter hundreds of redirects in real time as you type with live result counters and keyboard shortcut (`Esc` to clear).
+- **Master "Select All" Toggle:** Bulk select and manage redirects with visual row highlighting and indeterminate state tracking.
+- **Infinite Loop Prevention:** Automated client and server-side checks block self-redirects before they happen.
+- **Smart URL Normalization:** Automatically strips current domain schemes from pasted URLs, enforces leading slashes, and cleanly encodes whitespace.
+- **Flexible CSV Delimiter Support:** Seamlessly auto-detects commas (`,`), semicolons (`;`), or tabs (`\t`) during batch imports.
 - **InnoDB Storage Engine:** Table uses InnoDB by default for full ACID compliance, crash recovery, and non-blocking row-level locking during hit counter increments.
 - **Zero Overhead on Normal Requests:** Only triggers when ProcessWire hits a 404 Page Not Found.
 - **Dynamic ProcessWire Page References:** Linking to an internal page stores the Page ID (`^1234`). If that target page is later renamed or moved in the page tree, the redirect automatically updates!
 - **Wildcard Matching (`*`):** Match URL patterns and subpaths (e.g. `/products/*` redirects to `/products/`).
 - **Query String Matching:** Match legacy URLs with query parameters (e.g. `/index.php?page=2`).
-- **Batch CSV Import & Export:** Bulk import hundreds of redirects via direct copy-paste or file upload, and export them as CSV.
+- **Batch CSV Import & Export:** Bulk import hundreds of redirects via direct copy-paste or file upload, and export them as CSV with full status and active flags.
 - **Built-in Live Testing:** Test any redirect directly in a slide-out panel from the admin data table.
 - **Hit Tracking:** Keep track of redirect popularity and monitor traffic migration with the built-in hit counter.
 - **Role-Based Access Control:** Protect redirect management with the `redirects-admin` permission.
@@ -175,25 +181,33 @@ When migrating an entire website from an old CMS (WordPress, Drupal, Magento), m
 
 ### CSV Format Specification
 
-The CSV syntax supports both **2-column** (legacy/standard) and **3-column** formats:
+The CSV syntax supports **2-column**, **3-column**, and **4-column** formats:
 
 ```csv
-redirect_from,redirect_to[,redirect_code]
+redirect_from,redirect_to[,redirect_code][,active]
 ```
+
+- **Delimiters:** The importer automatically detects comma (`,`), semicolon (`;`), and tab (`\t`) delimiters, making it seamlessly compatible with Excel exports from all international locales.
+- **Columns:**
+  1. `redirect_from` (Required): The relative local path or wildcard pattern.
+  2. `redirect_to` (Required): Target internal path, external URL, or dynamic page ID (`^1234`).
+  3. `redirect_code` (Optional): HTTP status code (`301`, `302`, `303`, `307`, `308`). Defaults to configured module default if omitted.
+  4. `active` (Optional): `1` (or `true`, `active`) / `0` (or `false`, `inactive`). Defaults to `1` (active) if omitted.
 
 #### Example CSV Content:
 
 ```csv
-/campaign/,/products/tools/offers/,301
-/temporary-sale/,/offers/,302
-/old-checkout/,https://secure.example.com/checkout/,307
+/campaign/,/products/tools/offers/,301,1
+/temporary-sale/,/offers/,302,1
+/old-checkout/,https://secure.example.com/checkout/,307,0
 /legacy/contact.html,/contact-us/
 /blog/archive/*,/blog/
 ```
 
-- If `redirect_code` is omitted (2-column format), it automatically adopts the **Default Redirect HTTP Status Code** configured in module settings.
-- The optional header row (`redirect_from,redirect_to,redirect_code`) is detected and skipped automatically.
+- If `redirect_code` is omitted, it automatically adopts the **Default Redirect HTTP Status Code** configured in module settings.
+- The optional header row (`redirect_from,redirect_to,redirect_code,active`) is detected and skipped automatically.
 - Quotes around values and whitespace around delimiters are automatically trimmed.
+- Self-redirect loops (`redirect_from === redirect_to`) are caught and skipped with a descriptive warning.
 
 ### Importing via Text Input or File Upload
 
@@ -205,7 +219,7 @@ redirect_from,redirect_to[,redirect_code]
 ### Exporting and CSV Download
 
 - Navigate to **Setup > Redirects > Export** to view all redirects formatted as CSV in a copyable textarea.
-- Click **Download CSV** to generate and download an attachment file named `redirects_YYYY-MM-DD_HH-mm.csv`.
+- Click **Download CSV** to generate and download an attachment file named `redirects_YYYY-MM-DD_HH-mm.csv` (contains full 4-column CSV with active flags).
 
 ---
 
@@ -264,6 +278,7 @@ CREATE TABLE `process_redirects` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `counter` int(10) unsigned DEFAULT 0,
   `redirect_code` smallint(5) unsigned NOT NULL DEFAULT 301,
+  `active` tinyint(1) unsigned NOT NULL DEFAULT 1,
   `redirect_from` varchar(250) NOT NULL DEFAULT '',
   `redirect_to` varchar(250) NOT NULL DEFAULT '',
   PRIMARY KEY (`id`),
@@ -275,6 +290,7 @@ The module automatically migrates older schemas:
 - **Schema v1 -> v2:** Table rename normalization.
 - **Schema v2 -> v3:** Column length adjustment to 250 characters.
 - **Schema v3 -> v4:** Adds `redirect_code` column and converts table engine to InnoDB.
+- **Schema v4 -> v5:** Adds `active` column (1 = active, 0 = inactive) for disabling redirects without deletion.
 
 ---
 
@@ -290,9 +306,10 @@ The module automatically migrates older schemas:
 ## Troubleshooting & FAQ
 
 ### Why is my redirect not firing?
-1. **Existing Page Conflict:** If a published page exists with the same path, ProcessWire serves the page. Redirects only trigger on 404s.
-2. **Browser Cache:** Browsers cache `301 Moved Permanently` redirects aggressively. Test in an Incognito/Private window or use `curl -I https://yoursite.com/old-path/` to check headers.
-3. **Trailing Slashes:** Make sure your URL matches your site's trailing slash policy (ProcessWire template URL settings).
+1. **Redirect is Inactive:** Check if the redirect is marked `Inactive` in the table or edit screen.
+2. **Existing Page Conflict:** If a published page exists with the same path, ProcessWire serves the page. Redirects only trigger on 404s.
+3. **Browser Cache:** Browsers cache `301 Moved Permanently` redirects aggressively. Test in an Incognito/Private window or use `curl -I https://yoursite.com/old-path/` to check headers.
+4. **Trailing Slashes:** Make sure your URL matches your site's trailing slash policy (ProcessWire template URL settings).
 
 ### Can I redirect query strings?
 Yes! Enter the query string in the `Redirect From` field, for example: `/index.php?option=com_content&id=42`. ProcessRedirects detects query strings in the source path and matches them against `$_SERVER['REQUEST_URI']`.
@@ -301,6 +318,19 @@ Yes! Enter the query string in the `Redirect From` field, for example: `/index.p
 
 ## Version History
 
+- **2.4.0**
+  - Added **Active / Inactive** status toggle (Schema v5) to enable/disable redirects without deleting them.
+  - Complete **JavaScript overhaul (`admin.js`)**:
+    - Smart URL normalization: auto-extracts relative paths if full origin URLs are pasted.
+    - Global whitespace replacement fixing single-space encoding bug.
+    - Interactive HTTP status code badge with real-time SEO and caching explanations.
+    - Client-side loop prevention alert before form submission.
+    - Instant client-side search across redirects table with live match counter and `Esc` shortcut.
+    - Master "Select All" checkbox toggle with visual row selection highlighting and indeterminate state tracking.
+  - Server-side infinite redirect loop detection in `executeSave()` and `executeSavearray()`.
+  - Flexible CSV delimiter auto-detection (`,`, `;`, `\t`) for cross-locale spreadsheet imports.
+  - Full round-trip 4-column CSV import/export (`redirect_from,redirect_to,redirect_code,active`).
+  - Added Finnish translations for status, search, and loop prevention.
 - **2.3.0**
   - Added support for selectable HTTP redirect status codes (`301`, `302`, `303`, `307`, `308`) per redirect and global default setting ([#9](https://github.com/teppokoivula/ProcessRedirects/issues/9)).
   - Upgraded table storage engine to **InnoDB** with automatic migration from MyISAM ([#26](https://github.com/teppokoivula/ProcessRedirects/issues/26)).
