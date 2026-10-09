@@ -1,5 +1,4 @@
 en,tr,description,file,hash
-"Manage redirects with HTTP status codes, active status toggle, and InnoDB support","HTTP durum kodları, aktif durum geçişi ve InnoDB desteği ile yönlendirmeleri yönetin",,site/modules/ProcessRedirects/ProcessRedirects.module,a0522f00a64111ad90c1926e1a91f3d1
 "Manage redirects","Yönlendirmeleri yönet",,site/modules/ProcessRedirects/ProcessRedirects.module,33b539e75111e7b300ec05d15c784435
 "Redirect From","Kaynak URL",,site/modules/ProcessRedirects/ProcessRedirects.module,9d6173567a5ce056fc822f9098ca7252
 "Redirect To","Hedef URL",,site/modules/ProcessRedirects/ProcessRedirects.module,21d30a3f3b3d1826f97f7def77068d7d

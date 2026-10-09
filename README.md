@@ -2,7 +2,7 @@
 
 A robust, production-grade redirect management module for [ProcessWire CMS/CMF](https://processwire.com/).
 
-Manage HTTP redirects (301, 302, 303, 307, 308) directly from the ProcessWire admin panel with wildcard matching, query string support, dynamic page references, InnoDB storage, and CSV batch import/export.
+Manage HTTP redirects (301, 302, 303, 307, 308) directly from the ProcessWire admin panel with wildcard matching, query string support, dynamic page references, and CSV batch import/export.
 
 ---
 
@@ -24,7 +24,7 @@ Manage HTTP redirects (301, 302, 303, 307, 308) directly from the ProcessWire ad
   - [Exporting and CSV Download](#exporting-and-csv-download)
 - [Architecture & Performance](#architecture--performance)
   - [404 Interception Mechanism](#404-interception-mechanism)
-  - [InnoDB Storage & Row-Level Locking](#innodb-storage--row-level-locking)
+  - [Database Engine & Concurrency](#database-engine--concurrency)
   - [Database Schema & Migrations](#database-schema--migrations)
 - [Permissions & Security](#permissions--security)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
@@ -53,7 +53,6 @@ When redesigning or migrating websites, old URLs frequently change or become obs
 - **Infinite Loop Prevention:** Automated client and server-side checks block self-redirects before they happen.
 - **Smart URL Normalization:** Automatically strips current domain schemes from pasted URLs, enforces leading slashes, and cleanly encodes whitespace.
 - **Flexible CSV Delimiter Support:** Seamlessly auto-detects commas (`,`), semicolons (`;`), or tabs (`\t`) during batch imports.
-- **InnoDB Storage Engine:** Table uses InnoDB by default for full ACID compliance, crash recovery, and non-blocking row-level locking during hit counter increments.
 - **Zero Overhead on Normal Requests:** Only triggers when ProcessWire hits a 404 Page Not Found.
 - **Dynamic ProcessWire Page References:** Linking to an internal page stores the Page ID (`^1234`). If that target page is later renamed or moved in the page tree, the redirect automatically updates!
 - **Wildcard Matching (`*`):** Match URL patterns and subpaths (e.g. `/products/*` redirects to `/products/`).
@@ -69,7 +68,7 @@ When redesigning or migrating websites, old URLs frequently change or become obs
 
 - **ProcessWire:** `>= 3.0.112` (Fully tested on `3.0.270+`)
 - **PHP:** `>= 7.4` (Fully compatible with PHP `8.0`, `8.1`, `8.2`, `8.3`, and `8.4+`)
-- **Database:** MySQL `5.6+` / `8.0+` or MariaDB `10.1+` with InnoDB support
+- **Database:** MySQL `5.6+` / `8.0+` or MariaDB `10.1+`
 
 ---
 
@@ -246,27 +245,9 @@ Visitor Request → ProcessWire Router → Page Found?
                                         Redirect Visitor
 ```
 
-### Configurable Storage Engine (`$config->dbEngine`) & Row-Level Locking
+### Database Engine & Concurrency
 
-In high-traffic production environments, every redirect hit increments the `counter` column:
-
-```sql
-UPDATE process_redirects SET counter = counter + 1 WHERE id = :id;
-```
-
-Older versions of the module hardcoded `ENGINE = MYISAM`, which enforces table-level locking during writes. Concurrent redirect requests would lock the entire table, degrading throughput.
-
-ProcessRedirects dynamically respects ProcessWire's `$config->dbEngine` setting (defined in `site/config.php`), falling back to `InnoDB` if unspecified:
-
-```php
-// site/config.php
-$config->dbEngine = 'InnoDB';
-```
-
-Using **InnoDB** provides:
-- **Row-Level Locking:** Only the specific redirect row being incremented is locked, allowing concurrent reads and writes without contention.
-- **ACID Transactions:** Full transactional integrity and crash recovery.
-- **Cloud Database Compatibility:** Modern managed databases (AWS RDS, Google Cloud SQL, PlanetScale) that prohibit or deprecate MyISAM work out-of-the-box.
+The module dynamically respects ProcessWire's `$config->dbEngine` setting (defined in `site/config.php`), defaulting to modern transaction-safe engines (`InnoDB`) instead of legacy MyISAM table locks for high-concurrency environments.
 
 ### Database Schema & Migrations
 

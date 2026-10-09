@@ -4,7 +4,7 @@
  * Redirects module for ProcessWire
  *
  * Manage 301, 302, 303, 307, and 308 HTTP redirects via ProcessWire Admin.
- * Supports wildcards, query string matching, dynamic page references, InnoDB storage, and CSV import/export.
+ * Supports wildcards, query string matching, dynamic page references, and CSV import/export.
  *
  * @property int $schema_version Database schema version
  * @property int $default_redirect_code Default HTTP redirect status code
@@ -56,7 +56,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	public static function getModuleInfo(): array {
 		return [
 			'title' => 'Redirects',
-			'summary' => __('Manage redirects with HTTP status codes, active status toggle, and InnoDB support'),
+			'summary' => __('Manage redirects'),
 			'href' => 'https://processwire.com/talk/topic/148-release-redirects/',
 			'version' => '2.4.0',
 			'permanent' => false,

@@ -1,5 +1,4 @@
 en,fr,description,file,hash
-"Manage redirects with HTTP status codes, active status toggle, and InnoDB support","Gérer les redirections avec codes d'état HTTP, bascule d'état actif et prise en charge d'InnoDB",,site/modules/ProcessRedirects/ProcessRedirects.module,a0522f00a64111ad90c1926e1a91f3d1
 "Manage redirects","Gérer les redirections",,site/modules/ProcessRedirects/ProcessRedirects.module,33b539e75111e7b300ec05d15c784435
 "Redirect From","URL source",,site/modules/ProcessRedirects/ProcessRedirects.module,9d6173567a5ce056fc822f9098ca7252
 "Redirect To","URL cible",,site/modules/ProcessRedirects/ProcessRedirects.module,21d30a3f3b3d1826f97f7def77068d7d
