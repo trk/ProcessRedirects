@@ -159,16 +159,12 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	/**
 	 * Get the storage engine for the database table
 	 *
-	 * Defaults to InnoDB for crash safety, row-level locking, and modern MySQL compatibility.
+	 * Uses ProcessWire's $config->dbEngine setting (defaults to InnoDB if unspecified).
 	 *
 	 * @return string
 	 */
 	public function getTableEngine(): string {
-		$engine = $this->wire()->config->dbEngine;
-		if (!empty($engine) && strtolower($engine) !== 'myisam') {
-			return $engine;
-		}
-		return 'InnoDB';
+		return $this->wire()->config->dbEngine ?: 'InnoDB';
 	}
 
 	/**

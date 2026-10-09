@@ -233,7 +233,7 @@ Visitor Request → ProcessWire Router → Page Found?
                                         Redirect Visitor
 ```
 
-### InnoDB Storage & Row-Level Locking
+### Configurable Storage Engine (`$config->dbEngine`) & Row-Level Locking
 
 In high-traffic production environments, every redirect hit increments the `counter` column:
 
@@ -241,10 +241,17 @@ In high-traffic production environments, every redirect hit increments the `coun
 UPDATE process_redirects SET counter = counter + 1 WHERE id = :id;
 ```
 
-Older versions hardcoded `ENGINE = MYISAM`, which enforces table-level locking during writes. Concurrent redirect requests would lock the entire table, degrading throughput.
+Older versions of the module hardcoded `ENGINE = MYISAM`, which enforces table-level locking during writes. Concurrent redirect requests would lock the entire table, degrading throughput.
 
-ProcessRedirects utilizes **InnoDB** (`ENGINE = InnoDB DEFAULT CHARSET = utf8mb4`). InnoDB provides:
-- **Row-Level Locking:** Only the specific redirect row being incremented is locked, allowing concurrent reads and writes.
+ProcessRedirects dynamically respects ProcessWire's `$config->dbEngine` setting (defined in `site/config.php`), falling back to `InnoDB` if unspecified:
+
+```php
+// site/config.php
+$config->dbEngine = 'InnoDB';
+```
+
+Using **InnoDB** provides:
+- **Row-Level Locking:** Only the specific redirect row being incremented is locked, allowing concurrent reads and writes without contention.
 - **ACID Transactions:** Full transactional integrity and crash recovery.
 - **Cloud Database Compatibility:** Modern managed databases (AWS RDS, Google Cloud SQL, PlanetScale) that prohibit or deprecate MyISAM work out-of-the-box.
 
