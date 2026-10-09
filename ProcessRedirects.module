@@ -133,6 +133,8 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$field->name = 'default_redirect_code';
 		$field->label = __('Default HTTP Redirect Status Code');
 		$field->description = __('Default HTTP status code to use for newly created redirects.');
+		$field->required = true;
+		$field->requiredAttr = true;
 		$field->addOptions(self::getRedirectCodes());
 		$field->value = (int) ($data['default_redirect_code'] ?? 301);
 		$fields->add($field);
@@ -411,6 +413,8 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$field->description = $this->_('Select the HTTP status code to return with the redirect.');
 		$field->name = 'redirect_code';
 		$field->id = 'redirect_code';
+		$field->required = true;
+		$field->requiredAttr = true;
 		$field->addOptions(self::getRedirectCodes());
 		$field->value = $code;
 		$form->add($field);
