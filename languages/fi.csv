@@ -65,3 +65,13 @@ Examples of supported values:,Esimerkkejä tuetuista arvoista:,,site/modules/Pro
 - Path with a file extension: `/products/t-shirt.html`,- Polku jossa on tiedostopääte: `/tuotteet/t-paita.html`,,site/modules/ProcessRedirects/ProcessRedirects.module,18145bafcfa326e1ab0f0ad06bff2370
 - Path with a query string: `/index.php?page=2`,- Parametreja sisältävä polku: `/index.php?page=2`,,site/modules/ProcessRedirects/ProcessRedirects.module,948d15d88b930bbf1cbfb2a7dbe4c58e
 "You may use ""`*`"" as a wildcard for matching zero or more characters: `/products/*` would match `/products/`, `/products/t-shirt/`, etc.","Voit käyttää merkkiä ""`*`"" jokerimerkkinä, eli korvaamaan mitä tahansa (yhtä tai useampaa) muuta merkkiä: `/tuotteet/*` toimisi muun muassa poluille `/tuotteet/`, `/tuotteet/t-paita/`, jne.",,site/modules/ProcessRedirects/ProcessRedirects.module,ef5b8b39d6ef2dc1981a7f9eb10339ff
+Code,Koodi,,site/modules/ProcessRedirects/ProcessRedirects.module,ca0dbad92a874b2f69b549293387925e
+HTTP Redirect Status Code,HTTP-ohjauskoodi,,site/modules/ProcessRedirects/ProcessRedirects.module,e3fc64dfc8f7cb49ba62aae0498e078c
+Select the HTTP status code to return with the redirect.,Valitse ohjaukselle palautettava HTTP-tilakoodi.,,site/modules/ProcessRedirects/ProcessRedirects.module,b12b32802b94afc8a7b3d730eba9ebd4
+Default HTTP Redirect Status Code,HTTP-ohjauksen oletustilakoodi,,site/modules/ProcessRedirects/ProcessRedirects.module,753b2699850e82d4d7371f8965af9ad8
+Default HTTP status code to use for newly created redirects.,Uusille ohjauksille käytettävä oletusarvoinen HTTP-tilakoodi.,,site/modules/ProcessRedirects/ProcessRedirects.module,0b2521fce50b6f9b522ac2f1d769eadc
+Moved Permanently (default),Pysyvästi siirretty (oletus),,site/modules/ProcessRedirects/ProcessRedirects.module,f083db32375d13a6645102aeaa81669f
+Found (Temporary),Löytyi (väliaikainen),,site/modules/ProcessRedirects/ProcessRedirects.module,dc7a6db572c20a92ee0a63d0701e1941
+See Other,Katso toinen osoite,,site/modules/ProcessRedirects/ProcessRedirects.module,4f7c6641e26721a86ef5a90cdeacd543
+Temporary Redirect,Väliaikainen ohjaus,,site/modules/ProcessRedirects/ProcessRedirects.module,a900f342ef404f4a309c8468fa20bdb0
+Permanent Redirect,Pysyvä ohjaus,,site/modules/ProcessRedirects/ProcessRedirects.module,1406b3e4aabfd0bac98486b09cb16994

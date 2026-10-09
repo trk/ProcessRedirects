@@ -2,6 +2,12 @@
 
 /**
  * Redirects module for ProcessWire
+ *
+ * Manage 301, 302, 303, 307, and 308 HTTP redirects via ProcessWire Admin.
+ * Supports wildcards, query string matching, dynamic page references, InnoDB storage, and CSV import/export.
+ *
+ * @property int $schema_version Database schema version
+ * @property int $default_redirect_code Default HTTP redirect status code
  */
 class ProcessRedirects extends Process implements ConfigurableModule {
 
@@ -17,7 +23,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 *
 	 * @var int
 	 */
-	const SCHEMA_VERSION = 3;
+	const SCHEMA_VERSION = 4;
 
 	/**
 	 * Debug mode
@@ -50,9 +56,9 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	public static function getModuleInfo(): array {
 		return [
 			'title' => 'Redirects',
-			'summary' => __('Manage redirects'),
+			'summary' => __('Manage redirects with HTTP status codes and InnoDB support'),
 			'href' => 'https://processwire.com/talk/topic/148-release-redirects/',
-			'version' => '2.2.5',
+			'version' => '2.3.0',
 			'permanent' => false,
 			'page' => [
 				'name' => 'redirects',
@@ -65,9 +71,37 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			'icon' => 'exchange',
 			'requires' => [
 				'ProcessWire>=3.0.112',
-				'PHP>=7.1.0',
+				'PHP>=7.4.0',
 			],
 		];
+	}
+
+	/**
+	 * Available HTTP redirect status codes and their descriptions
+	 *
+	 * @return array<int, string>
+	 */
+	public static function getRedirectCodes(): array {
+		return [
+			301 => '301 ' . __('Moved Permanently (default)'),
+			302 => '302 ' . __('Found (Temporary)'),
+			303 => '303 ' . __('See Other'),
+			307 => '307 ' . __('Temporary Redirect'),
+			308 => '308 ' . __('Permanent Redirect'),
+		];
+	}
+
+	/**
+	 * Sanitize and validate HTTP redirect status code
+	 *
+	 * @param mixed $code
+	 * @param int $fallback
+	 * @return int
+	 */
+	public function sanitizeRedirectCode($code, int $fallback = 301): int {
+		$code = (int) $code;
+		$validCodes = array_keys(self::getRedirectCodes());
+		return in_array($code, $validCodes, true) ? $code : $fallback;
 	}
 
 	/**
@@ -75,17 +109,17 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 *
 	 * @return array
 	 */
-	public static function getDefaultData() {
+	public static function getDefaultData(): array {
 		return [
 			'schema_version' => 1,
+			'default_redirect_code' => 301,
 		];
 	}
 
 	/**
 	 * Module configuration
 	 *
-	 * Note: at the moment thi method doesn't do much of anything, and primarily exists so that we can store the schema
-	 * version info in module configuration.
+	 * Allows configuring the default HTTP redirect status code.
 	 *
 	 * @param array $data
 	 * @return InputfieldWrapper
@@ -93,6 +127,16 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	public static function getModuleConfigInputfields(array $data): InputfieldWrapper {
 		$data = array_merge(self::getDefaultData(), $data);
 		$fields = new InputfieldWrapper();
+
+		/** @var InputfieldSelect $field */
+		$field = wire()->modules->get('InputfieldSelect');
+		$field->name = 'default_redirect_code';
+		$field->label = __('Default HTTP Redirect Status Code');
+		$field->description = __('Default HTTP status code to use for newly created redirects.');
+		$field->addOptions(self::getRedirectCodes());
+		$field->value = (int) ($data['default_redirect_code'] ?? 301);
+		$fields->add($field);
+
 		return $fields;
 	}
 
@@ -101,7 +145,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 *
 	 * This method is called when the module is loaded. We use it to attach hooks.
 	 */
-	public function init() {
+	public function init(): void {
 		parent::init();
 
 		// check for a database schema update
@@ -110,6 +154,21 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		}
 
 		$this->addHook('ProcessPageView::pageNotFound', $this, 'checkRedirects');
+	}
+
+	/**
+	 * Get the storage engine for the database table
+	 *
+	 * Defaults to InnoDB for crash safety, row-level locking, and modern MySQL compatibility.
+	 *
+	 * @return string
+	 */
+	public function getTableEngine(): string {
+		$engine = $this->wire()->config->dbEngine;
+		if (!empty($engine) && strtolower($engine) !== 'myisam') {
+			return $engine;
+		}
+		return 'InnoDB';
 	}
 
 	/**
@@ -123,15 +182,18 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$this->wire('modules')->get('JqueryUI')->use('vex');
 
 		// load admin.js
-		$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
+		if ($this->config->scripts) {
+			$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
+		}
 
 		/** @var MarkupAdminDataTable */
 		$table = $this->modules->get('MarkupAdminDataTable');
 		$table
 			->headerRow([
 				$this->_('Redirect From'),
-				$this->_("Redirect To"),
-				$this->_("Test Redirect"),
+				$this->_('Redirect To'),
+				$this->_('Code'),
+				$this->_('Test Redirect'),
 				$this->_('Hits'),
 				$this->_('Delete'),
 			])
@@ -139,16 +201,18 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 
 		// find all redirects and add them to the table
 		$row_count = 0;
-		$redirects = $this->database->query('SELECT * FROM ' . self::TABLE_NAME . ' ORDER BY redirect_from');
+		$redirects = $this->wire()->database->query('SELECT * FROM ' . self::TABLE_NAME . ' ORDER BY redirect_from');
 		foreach ($redirects as $redirect) {
 
 			// prepare redirect target
 			$redirect['redirect_to'] = $this->makeRedirectToURL($redirect['redirect_to']);
+			$code = $this->sanitizeRedirectCode($redirect['redirect_code'] ?? null, (int) ($this->default_redirect_code ?: 301));
 
-			// output in table rows with edit link and delete checkbox?
+			// output in table rows with edit link and delete checkbox
 			$table->row([
-				'<a href="edit/?id=' . (int) $redirect['id'] . '">' . $redirect['redirect_from'] . '</a>',
-				'<a href="edit/?id=' . (int) $redirect['id'] . '">' . $redirect['redirect_to'] . '</a>',
+				'<a href="edit/?id=' . (int) $redirect['id'] . '">' . $this->sanitizer->entities($redirect['redirect_from']) . '</a>',
+				'<a href="edit/?id=' . (int) $redirect['id'] . '">' . $this->sanitizer->entities($redirect['redirect_to']) . '</a>',
+				'<span class="ui-priority-secondary">' . $code . '</span>',
 				'<a target="_blank" class="pw-panel pw-panel-right" data-panel-width="75%" href="' . substr($this->config->urls->root, 0, -1) . $redirect['redirect_from'] . '">' . $this->_('Test') . ' <i class="fa fa-external-link" aria-hidden="true"></i></a>',
 				(int) $redirect['counter'],
 				'<input type="checkbox" name="delete[]" value="' . (int) $redirect['id'] . '">',
@@ -229,29 +293,34 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$this->wire('modules')->get('JqueryUI')->use('vex');
 
 		// load admin.js
-		$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
+		if ($this->config->scripts) {
+			$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
+		}
 
 		// default settings
 		$id = (int) $this->input->get->id ?: 0;
 		$from = '';
 		$to = '';
+		$code = (int) ($this->default_redirect_code ?: 301);
 
 		// check if we're editing an existing record
 		if ($id > 0) {
 			$this->headline($this->_('Edit Redirect'));
-			$stmt = $this->database->prepare("
-				SELECT id, redirect_from, redirect_to
+			$stmt = $this->wire()->database->prepare("
+				SELECT id, redirect_from, redirect_to, redirect_code
 				FROM " . self::TABLE_NAME . "
 				WHERE id = :id
 			");
 			$stmt->bindParam('id', $id, \PDO::PARAM_INT);
 			$stmt->execute();
-			$redirect = $stmt->fetch(\PDO::FETCH_NUM);
+			$redirect = $stmt->fetch(\PDO::FETCH_ASSOC);
 			if ($redirect === false) {
 				throw new Wire404Exception($this->_('Redirect not found.'));
 			}
-			list($id, $from, $to) = $redirect;
-			$to = $this->makeRedirectToURL($to);
+			$id = (int) $redirect['id'];
+			$from = (string) $redirect['redirect_from'];
+			$to = $this->makeRedirectToURL((string) $redirect['redirect_to']);
+			$code = $this->sanitizeRedirectCode($redirect['redirect_code'] ?? null, $code);
 		}
 
 		/** @var InputfieldForm */
@@ -294,7 +363,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 				$field->value = $page->id;
 			}
 		} else {
-			$page = $this->wire(new NullPage());
+			$page = $this->pages->newNullPage();
 		}
 		$form->add($field);
 
@@ -306,6 +375,16 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$field->id = 'redirect_to';
 		$field->collapsed = $page->id || $id == 0 ? 1 : 0;
 		$field->value = $to;
+		$form->add($field);
+
+		/** @var InputfieldSelect */
+		$field = $this->modules->get('InputfieldSelect');
+		$field->label = $this->_('HTTP Redirect Status Code');
+		$field->description = $this->_('Select the HTTP status code to return with the redirect.');
+		$field->name = 'redirect_code';
+		$field->id = 'redirect_code';
+		$field->addOptions(self::getRedirectCodes());
+		$field->value = $code;
 		$form->add($field);
 
 		/** @var InputfieldButton */
@@ -345,7 +424,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$this->headline($this->_('Export Redirects'));
 
 		/** @var InputfieldWrapper */
-		$wrapper = $this->wire(new InputfieldWrapper);
+		$wrapper = $this->wire(new InputfieldWrapper());
 		$wrapper->setClasses([
 			'list' => 'Inputfields uk-grid uk-grid-collapse uk-grid-match uk-grid-stack uk-margin-bottom',
 		]);
@@ -361,10 +440,11 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$wrapper->add($field);
 
 		// find all redirects and add them to the export field
-		$redirects = $this->database->query('SELECT redirect_from, redirect_to FROM ' . self::TABLE_NAME . ' ORDER BY redirect_from');
+		$redirects = $this->wire()->database->query('SELECT redirect_from, redirect_to, redirect_code FROM ' . self::TABLE_NAME . ' ORDER BY redirect_from');
 		foreach ($redirects as $redirect) {
-			$redirect_to = $this->makeRedirectToURL($redirect['redirect_to']);
-			$field->value = $field->value . "\n" . $redirect['redirect_from'] . "," . $redirect_to;
+			$redirect_to = $this->makeRedirectToURL((string) $redirect['redirect_to']);
+			$code = $this->sanitizeRedirectCode($redirect['redirect_code'] ?? null, (int) ($this->default_redirect_code ?: 301));
+			$field->value = $field->value . "\n" . $redirect['redirect_from'] . "," . $redirect_to . "," . $code;
 		}
 
 		/** @var InputfieldButton */
@@ -393,7 +473,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 *
 	 * This method is called when requesting the Process page with /download/ suffix.
 	 */
-	public function ___executeDownload() {
+	public function ___executeDownload(): void {
 
 		// define output file name
 		$filename = "redirects_" . date('Y-m-d_H-i') . ".csv";
@@ -408,15 +488,18 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		fputcsv($fp, [
 			'redirect_from',
 			'redirect_to',
+			'redirect_code',
 		]);
 
 		// find all redirects and add them to output
-		$redirects = $this->database->query('SELECT redirect_from, redirect_to FROM ' . self::TABLE_NAME . ' ORDER BY redirect_from');
+		$redirects = $this->wire()->database->query('SELECT redirect_from, redirect_to, redirect_code FROM ' . self::TABLE_NAME . ' ORDER BY redirect_from');
 		foreach ($redirects as $redirect) {
-			$redirect_to = $this->makeRedirectToURL($redirect['redirect_to']);
+			$redirect_to = $this->makeRedirectToURL((string) $redirect['redirect_to']);
+			$code = $this->sanitizeRedirectCode($redirect['redirect_code'] ?? null, (int) ($this->default_redirect_code ?: 301));
 			fputcsv($fp, [
 				$redirect['redirect_from'],
 				$redirect_to,
+				$code,
 			]);
 		}
 
@@ -441,8 +524,10 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 
 		// read arguments from POST data
 		$id = (int) $this->input->post->id;
-		$from = $this->input->post->redirect_from;
-		$to = $this->input->post->redirect_to;
+		$from = (string) $this->input->post->redirect_from;
+		$to = (string) $this->input->post->redirect_to;
+		$defaultCode = (int) ($this->default_redirect_code ?: 301);
+		$code = $this->sanitizeRedirectCode($this->input->post->redirect_code, $defaultCode);
 
 		// fall back to select_page value if redirect_to is empty
 		if (empty($to) && $this->input->post->select_page && (int) $this->input->post->select_page == $this->input->post->select_page) {
@@ -453,7 +538,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		}
 
 		// check for errors; if an error is found, redirect back with an error message
-		if ($from == '' || $to == '') {
+		if ($from === '' || $to === '') {
 			$this->error($this->_('No redirect created, please check provided values.'));
 			$this->session->redirect('../', false);
 		} else {
@@ -470,11 +555,12 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		}
 
 		// save redirect and redirect back with a success message
-		$this->saveRedirect($from, $to, $id);
+		$this->saveRedirect($from, $to, $id, $code);
 		$this->message(sprintf(
-			$this->_('Saved redirect from "%s" to "%s".'),
+			$this->_('Saved redirect from "%s" to "%s" (%d).'),
 			$from,
-			$to
+			$to,
+			$code
 		));
 		$this->session->redirect('../', false);
 	}
@@ -494,7 +580,6 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			throw new WireException($this->_('CSRF check failed, redirect was not saved. Please try again.'));
 		}
 
-		$count = 0;
 		$redirects_array = [];
 
 		if ($this->input->post->import_from == 'file') {
@@ -523,7 +608,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			}
 		} else {
 			// text input
-			$redirects_array = preg_split("/\r\n|\n|\r/", $this->input->post->redirects);
+			$redirects_array = preg_split("/\r\n|\n|\r/", (string) $this->input->post->redirects);
 		}
 
 		if (empty($redirects_array) || $redirects_array[0] == '') {
@@ -536,22 +621,29 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 
 		// keep track of from paths in case there are duplicates
 		$paths = [];
+		$defaultCode = (int) ($this->default_redirect_code ?: 301);
 
 		foreach ($redirects_array as $redirect) {
 
-			// process redirect row ([from path],[to URL])
-			$redirect_urls = explode(',', $redirect);
+			// process redirect row ([from path],[to URL],[redirect code])
+			$redirect_urls = str_getcsv($redirect);
+			if (count($redirect_urls) < 2) {
+				$redirect_urls = explode(',', $redirect);
+			}
+
 			$from = trim($redirect_urls[0] ?? '', " \t\n\r\0\x0B\"");
 			$to = trim($redirect_urls[1] ?? '', " \t\n\r\0\x0B\"");
+			$rawCode = isset($redirect_urls[2]) ? trim($redirect_urls[2], " \t\n\r\0\x0B\"") : null;
+			$code = $this->sanitizeRedirectCode($rawCode, $defaultCode);
 
 			// silently skip header row
-			if ($from == 'redirect_from' && $to == 'redirect_to') {
+			if ($from === 'redirect_from' && $to === 'redirect_to') {
 				continue;
 			}
 
 			// skip empty or partial rows
-			if ($from == '' || $to == '') {
-				if ($from != '' || $to != '') {
+			if ($from === '' || $to === '') {
+				if ($from !== '' || $to !== '') {
 					// partial row, log failure
 					$this->error(sprintf(
 						$this->_('Malformed input, redirect not added: %s'),
@@ -574,7 +666,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			$paths[$from] = 1;
 
 			// save redirect and increment counter
-			$result_code = $this->saveRedirect($from, $to);
+			$result_code = $this->saveRedirect($from, $to, 0, $code);
 			++$count[$result_code];
 		}
 
@@ -608,7 +700,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		}
 
 		// prepare delete statement
-		$stmt = $this->database->prepare("
+		$stmt = $this->wire()->database->prepare("
 			DELETE FROM " . self::TABLE_NAME . "
 			WHERE id = :id
 		");
@@ -616,14 +708,15 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		// delete items either based on an array of redirect IDs or a single redirect ID
 		if (is_array($this->input->post->delete)) {
 			foreach ($this->input->post->delete as $id) {
-				if ((int) $id != $id) continue;
+				$id = (int) $id;
+				if ($id <= 0) continue;
 				$stmt->bindParam('id', $id, \PDO::PARAM_INT);
 				$stmt->execute();
 				++$count;
 			}
 		} else {
-			$id = $this->input->post->delete;
-			if ((int) $id == $id) {
+			$id = (int) $this->input->post->delete;
+			if ($id > 0) {
 				$stmt->bindParam('id', $id, \PDO::PARAM_INT);
 				$stmt->execute();
 				++$count;
@@ -641,7 +734,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	/**
 	 * Look for matching redirects
 	 *
-	 * This method is hooked into ProcesPageView::pageNotFound, which means that it gets executed when a visitor hits
+	 * This method is hooked into ProcessPageView::pageNotFound, which means that it gets executed when a visitor hits
 	 * the 404 page.
 	 *
 	 * @param HookEvent $event
@@ -659,11 +752,12 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 
 		// determine the URL path that wasn't found
 		$parsed_url = parse_url($request_url);
-		$url = rtrim($parsed_url['path'], '/');
+		$url = rtrim($parsed_url['path'] ?? '', '/');
 
 		// if installed in a subdirectory, make $url relative to the directory ProcessWire is installed in
-		if ($this->config->urls->root != '/') {
-			$url = substr($url, strlen($this->config->urls->root)-1);
+		$root = (string) $this->config->urls->root;
+		if ($root !== '' && $root !== '/') {
+			$url = substr($url, strlen($root) - 1);
 		}
 
 		// grab query string
@@ -672,11 +766,11 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 
 		// check if query string matches should be checked as well (query string is present and database contains
 		// redirect_from paths with query strings)
-		$use_query_url = $query_url !== null && $this->database->query("SELECT id FROM " . self::TABLE_NAME . " WHERE redirect_from LIKE '/%?%' LIMIT 1")->rowCount();
+		$use_query_url = $query_url !== null && $this->wire()->database->query("SELECT id FROM " . self::TABLE_NAME . " WHERE redirect_from LIKE '/%?%' LIMIT 1")->rowCount();
 
 		// now see if it's in the DB
-		$stmt = $this->database->prepare("
-			SELECT id, redirect_to
+		$stmt = $this->wire()->database->prepare("
+			SELECT id, redirect_to, redirect_code
 			FROM " . self::TABLE_NAME . "
 			WHERE :url LIKE REPLACE(REPLACE(TRIM(TRAILING '/' FROM redirect_from), '*', '%'), '_', '\_')
 			" . ($use_query_url ? "OR :query_url LIKE CONCAT(REPLACE(REPLACE(TRIM(TRAILING '/' FROM REPLACE(redirect_from, '/?', '?')), '*', '%'), '_', '\_'), '&%')" : "") . "
@@ -687,7 +781,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			$stmt->bindParam('query_url', $query_url, \PDO::PARAM_STR);
 		}
 		$stmt->execute();
-		$result = $stmt->fetch(\PDO::FETCH_NUM);
+		$result = $stmt->fetch(\PDO::FETCH_ASSOC);
 
 		// debug mode?
 		if ($this->debug_mode) {
@@ -700,8 +794,11 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		if ($result === false) return;
 
 		// if there is a match, update hit counter and perform a redirect
-		list($id, $redirect_to) = $result;
-		$update_stmt = $this->database->prepare("
+		$id = (int) $result['id'];
+		$redirect_to = (string) $result['redirect_to'];
+		$redirect_code = $this->sanitizeRedirectCode($result['redirect_code'] ?? null, (int) ($this->default_redirect_code ?: 301));
+
+		$update_stmt = $this->wire()->database->prepare("
 			UPDATE " . self::TABLE_NAME . "
 			SET counter = counter + 1
 			WHERE id = :id
@@ -709,10 +806,16 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$update_stmt->bindParam('id', $id, \PDO::PARAM_INT);
 		$update_stmt->execute();
 		$redirect_to = $this->makeRedirectToURL($redirect_to, true);
-		if ($query !== null) {
+		if ($query !== null && $query !== '') {
 			$redirect_to .= (strpos($redirect_to, '?') === false ? '?' : '&') . $query;
 		}
-		$this->session->redirect($redirect_to);
+
+		// Perform redirect with the designated HTTP status code
+		if (version_compare($this->config->version, '3.0.166', '>=')) {
+			$this->session->redirect($redirect_to, $redirect_code);
+		} else {
+			$this->session->redirect($redirect_to, $redirect_code === 301);
+		}
 	}
 
 	/**
@@ -778,13 +881,12 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$redirects_field = $this->modules->get('InputfieldTextarea');
 		$redirects_field->label = $this->_('List of redirects');
 		$redirects_field->icon = 'paste';
-		// note: technically speaking commas are valid characters in URLs, so this may throw off the importer if a URL
-		// contains a comma (see https://stackoverflow.com/a/1547940/1397709 for details).
-		$redirects_field->description = $this->_('Comma separated list, where each line contains one redirect (redirect_from,redirect_to).');
+		$redirects_field->description = $this->_('Comma separated list, where each line contains one redirect (redirect_from,redirect_to[,redirect_code]).');
 		$redirects_field->notes = implode("\n", [
 			$this->_('Example') . ":\n",
 			$this->_('/campaign/,/products/tools/offers/'),
-			$this->_('/another-campaign/,https://www.example.com'),
+			$this->_('/another-campaign/,https://www.example.com,301'),
+			$this->_('/temporary-promo/,/offers/,302'),
 			$this->_('/index.php?page=2,/about-us/'),
 			$this->_('/shop/products/*,/products/'),
 		]);
@@ -800,8 +902,8 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			$file_field = $this->modules->get('InputfieldFile');
 			$file_field->name = 'file';
 			$file_field->label = $this->_('Upload file');
-			$file_field->description = $this->_('Import redirects by uploading a CSV file. Each row should contain two comma separated values: local source path (1) and redirect target (2).');
-			$file_field->notes = $this->_("1. Source path should be a non-existing path on current site (e.g. /some/path/).\n2. Redirect target may be local path (/path/to/page/), external URL (https://www.example.com/), or page ID prefixed with a caret (e.g. ^1234).");
+			$file_field->description = $this->_('Import redirects by uploading a CSV file. Each row should contain two or three comma separated values: local source path (1), redirect target (2), and optional HTTP redirect status code (3, default 301).');
+			$file_field->notes = $this->_("1. Source path should be a non-existing path on current site (e.g. /some/path/).\n2. Redirect target may be local path (/path/to/page/), external URL (https://www.example.com/), or page ID prefixed with a caret (e.g. ^1234).\n3. Optional HTTP status code: 301, 302, 303, 307, or 308 (defaults to configured default if omitted).");
 			$file_field->icon = 'upload';
 			$file_field->extensions = 'csv';
 			$file_field->overwrite = 'true';
@@ -842,12 +944,14 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 * @param string $from
 	 * @param string $to
 	 * @param int $id
+	 * @param int $code HTTP redirect status code
 	 * @return int 0 for failure, 1 for add (new redirect), 2 for edit (existing redirect)
 	 */
-	private function saveRedirect(string $from, string $to, int $id = 0): int {
+	private function saveRedirect(string $from, string $to, int $id = 0, int $code = 301): int {
 
 		$from = $this->formatURL($this->addUrlSlashes($from));
 		$to = $this->sanitizer->url($to);
+		$code = $this->sanitizeRedirectCode($code, (int) ($this->default_redirect_code ?: 301));
 
 		// if target address is a relative path (local URL) and points to an existing page, store a page ID instead;
 		// we're also going to add a caret prefix (^[page ID]) to make the stored ID easily distinguishable
@@ -860,24 +964,26 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 
 		// if 'id' argument is zero, we're adding a new redirect
 		if ($id === 0) {
-			$stmt = $this->database->prepare("
-				INSERT INTO " . self::TABLE_NAME . " (redirect_from, redirect_to)
-				VALUES (:from, :to)
-				ON DUPLICATE KEY UPDATE redirect_from = VALUES(redirect_from), redirect_to = VALUES(redirect_to)
+			$stmt = $this->wire()->database->prepare("
+				INSERT INTO " . self::TABLE_NAME . " (redirect_from, redirect_to, redirect_code)
+				VALUES (:from, :to, :code)
+				ON DUPLICATE KEY UPDATE redirect_from = VALUES(redirect_from), redirect_to = VALUES(redirect_to), redirect_code = VALUES(redirect_code)
 			");
 			$stmt->bindParam('from', $from, \PDO::PARAM_STR);
 			$stmt->bindParam('to', $to, \PDO::PARAM_STR);
+			$stmt->bindParam('code', $code, \PDO::PARAM_INT);
 			return $stmt->execute() ? $stmt->rowCount() : 0;
 		}
 
 		// nope, looks like we're updating existing redirect
-		$stmt = $this->database->prepare("
+		$stmt = $this->wire()->database->prepare("
 			UPDATE " . self::TABLE_NAME . "
-			SET redirect_from = :from, redirect_to = :to
+			SET redirect_from = :from, redirect_to = :to, redirect_code = :code
 			WHERE id = :id
 		");
 		$stmt->bindParam('from', $from, \PDO::PARAM_STR);
 		$stmt->bindParam('to', $to, \PDO::PARAM_STR);
+		$stmt->bindParam('code', $code, \PDO::PARAM_INT);
 		$stmt->bindParam('id', $id, \PDO::PARAM_INT);
 		return $stmt->execute() ? 2 : 0;
 	}
@@ -921,7 +1027,13 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			$this->_('- Path with one or more parts: `/campaign/`, `/old/site/path/`, etc.'),
 			$this->_('- Path with a file extension: `/products/t-shirt.html`'),
 			$this->_('- Path with a query string: `/index.php?page=2`') . "\n",
-			$this->_('You may use "`*`" as a wildcard for matching zero or more characters: `/products/*` would match `/products/`, `/products/t-shirt/`, etc.'),
+			$this->_('You may use "`*`" as a wildcard for matching zero or more characters: `/products/*` would match `/products/`, `/products/t-shirt/`, etc.') . "\n",
+			$this->_('HTTP Status Codes:'),
+			$this->_('- **301 (Moved Permanently)**: Best for permanent SEO changes, cached by browsers and search engines.'),
+			$this->_('- **302 (Found / Temporary)**: Temporary redirect, not cached by default.'),
+			$this->_('- **303 (See Other)**: Redirects with GET method, ideal for post/redirect/get flows.'),
+			$this->_('- **307 (Temporary Redirect)**: Preserves request method (e.g. POST remains POST).'),
+			$this->_('- **308 (Permanent Redirect)**: Permanent equivalent of 307 preserving request method.'),
 		]), ['fullMarkdown' => true]);
 		$instructions->icon = 'info-circle';
 		$instructions->collapsed = Inputfield::collapsedYes;
@@ -937,19 +1049,41 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 *
 	 * @throws WireException if database schema version isn't recognized
 	 */
-	private function updateDatabaseSchema() {
+	private function updateDatabaseSchema(): void {
 		while ($this->schema_version < self::SCHEMA_VERSION) {
 			++$this->schema_version;
 			switch ($this->schema_version) {
+				case 4:
+					// Add redirect_code column
+					try {
+						$this->wire()->database->exec("
+							ALTER TABLE " . self::TABLE_NAME . "
+							ADD COLUMN redirect_code SMALLINT UNSIGNED NOT NULL DEFAULT 301 AFTER counter
+						");
+					} catch (\Exception $e) {
+						// Column may already exist
+					}
+
+					// Upgrade table engine to InnoDB (or configured modern dbEngine)
+					try {
+						$targetEngine = $this->getTableEngine();
+						$this->wire()->database->exec("
+							ALTER TABLE " . self::TABLE_NAME . " ENGINE = {$targetEngine}
+						");
+					} catch (\Exception $e) {
+						// Engine modification may be restricted or already target
+					}
+					break;
 				case 3:
-					$this->database->exec("
+					$this->wire()->database->exec("
 						ALTER TABLE " . self::TABLE_NAME . "
 						MODIFY COLUMN redirect_from VARCHAR(250) NOT NULL DEFAULT '',
 						MODIFY COLUMN redirect_to VARCHAR(250) NOT NULL DEFAULT ''
 					");
+					break;
 				case 2:
 					try {
-						$this->database->exec("RENAME TABLE `ProcessRedirects` TO `process_redirects`");
+						$this->wire()->database->exec("RENAME TABLE `ProcessRedirects` TO `process_redirects`");
 					} catch (\Exception $e) {
 						// just in case
 					}
@@ -971,17 +1105,22 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 */
 	public function ___install(): void {
 		parent::___install();
-		$this->database->query("
-			CREATE TABLE " . self::TABLE_NAME . " (
+		$engine = $this->getTableEngine();
+		$charset = $this->wire()->config->dbCharset ?: 'utf8mb4';
+
+		$this->wire()->database->query("
+			CREATE TABLE IF NOT EXISTS " . self::TABLE_NAME . " (
 				id int unsigned NOT NULL auto_increment,
 				counter int unsigned DEFAULT 0,
+				redirect_code smallint unsigned NOT NULL DEFAULT 301,
 				redirect_from varchar(250) NOT NULL DEFAULT '',
 				redirect_to varchar(250) NOT NULL DEFAULT '',
 				PRIMARY KEY(id),
 				UNIQUE KEY(redirect_from)
-			) ENGINE = MYISAM;
+			) ENGINE = {$engine} DEFAULT CHARSET = {$charset};
 		");
 		$this->modules->saveConfig($this, 'schema_version', self::SCHEMA_VERSION);
+		$this->modules->saveConfig($this, 'default_redirect_code', 301);
 	}
 
 	/**
@@ -991,6 +1130,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 	 */
 	public function ___uninstall(): void {
 		parent::___uninstall();
-		$this->database->query("DROP TABLE IF EXISTS " . self::TABLE_NAME);
+		$this->wire()->database->query("DROP TABLE IF EXISTS " . self::TABLE_NAME);
 	}
 }
+
