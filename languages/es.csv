@@ -104,3 +104,10 @@ Instructions,Instrucciones,,site/modules/ProcessRedirects/ProcessRedirects.modul
 "308 Permanent Redirect: Modern permanent redirect strictly preserving HTTP request method and caching behavior.","308 Redirección permanente: Redirección permanente moderna que conserva estrictamente el método de solicitud HTTP y el comportamiento de almacenamiento en caché.",,site/modules/ProcessRedirects/ProcessRedirects.module,6fcf4adf368940cdbd8e7c61bfbcc80b
 "Please select or enter target page.","Por favor, seleccione o introduzca la página de destino.",,site/modules/ProcessRedirects/ProcessRedirects.module,34a1025382f2e44e80ab0e97577ffd5e
 "No redirects matching your search.","No se encontraron redirecciones que coincidan con su búsqueda.",,site/modules/ProcessRedirects/ProcessRedirects.module,356feb4718b98e16accf66f12a5a4fb0
+"Destination Type","Tipo de destino",,site/modules/ProcessRedirects/ProcessRedirects.module,ee9fbcaf9d696ed41d07de59b2754abd
+"Internal Page","Página interna",,site/modules/ProcessRedirects/ProcessRedirects.module,ed48faf41829cdbe35139b8faab0579b
+"External URL or Custom Path","URL externa o ruta personalizada",,site/modules/ProcessRedirects/ProcessRedirects.module,d25daecb5a5b3788a0e058859ffc1fc4
+"Target Page","Página de destino",,site/modules/ProcessRedirects/ProcessRedirects.module,6bffd228292543e1c6fc444b246663ef
+"Target URL or Path","URL o ruta de destino",,site/modules/ProcessRedirects/ProcessRedirects.module,7c10f13b5b0b86427554070cb2187c6d
+"Enter a valid URL (e.g. https://www.otherdomain.com/) or relative path.","Introduzca una URL válida (p. ej. https://www.otrodominio.com/) o una ruta relativa.",,site/modules/ProcessRedirects/ProcessRedirects.module,bddd24020869c5390b346d60ea19e213
+"Please enter target URL.","Por favor, introduzca la URL de destino.",,site/modules/ProcessRedirects/ProcessRedirects.module,4756e7baaee8a841b83ada1c6db39adf

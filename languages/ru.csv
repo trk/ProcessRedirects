@@ -104,3 +104,10 @@ Instructions,Инструкции,,site/modules/ProcessRedirects/ProcessRedirect
 "308 Permanent Redirect: Modern permanent redirect strictly preserving HTTP request method and caching behavior.","308 Постоянное перенаправление: Современное постоянное перенаправление, строго сохраняющее метод HTTP-запроса и поведение кэширования.",,site/modules/ProcessRedirects/ProcessRedirects.module,6fcf4adf368940cdbd8e7c61bfbcc80b
 "Please select or enter target page.","Пожалуйста, выберите или введите целевую страницу.",,site/modules/ProcessRedirects/ProcessRedirects.module,34a1025382f2e44e80ab0e97577ffd5e
 "No redirects matching your search.","Перенаправлений, соответствующих поисковому запросу, не найдено.",,site/modules/ProcessRedirects/ProcessRedirects.module,356feb4718b98e16accf66f12a5a4fb0
+"Destination Type","Тип назначения",,site/modules/ProcessRedirects/ProcessRedirects.module,ee9fbcaf9d696ed41d07de59b2754abd
+"Internal Page","Внутренняя страница",,site/modules/ProcessRedirects/ProcessRedirects.module,ed48faf41829cdbe35139b8faab0579b
+"External URL or Custom Path","Внешний URL или пользовательский путь",,site/modules/ProcessRedirects/ProcessRedirects.module,d25daecb5a5b3788a0e058859ffc1fc4
+"Target Page","Целевая страница",,site/modules/ProcessRedirects/ProcessRedirects.module,6bffd228292543e1c6fc444b246663ef
+"Target URL or Path","Целевой URL или путь",,site/modules/ProcessRedirects/ProcessRedirects.module,7c10f13b5b0b86427554070cb2187c6d
+"Enter a valid URL (e.g. https://www.otherdomain.com/) or relative path.","Введите действительный URL (например, https://www.otherdomain.com/) или относительный путь.",,site/modules/ProcessRedirects/ProcessRedirects.module,bddd24020869c5390b346d60ea19e213
+"Please enter target URL.","Пожалуйста, введите целевой URL.",,site/modules/ProcessRedirects/ProcessRedirects.module,4756e7baaee8a841b83ada1c6db39adf

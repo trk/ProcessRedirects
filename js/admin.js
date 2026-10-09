@@ -56,11 +56,12 @@
 			});
 		}
 
-		if ($pageSelect.length && $toInput.length) {
-			// Populate the redirect_to field when a page is selected from PageListSelect
+		let selectedPageUrl = $pageSelect.attr('data-url') || '';
+		if ($pageSelect.length) {
+			// Track selected internal page URL for loop prevention
 			$pageSelect.on('pageSelected', function(event, data) {
 				if (data && data.url && data.url.length) {
-					$toInput.val(data.url);
+					selectedPageUrl = data.url;
 				}
 			});
 		}
@@ -119,27 +120,42 @@
 			 * Validate form values and prevent infinite loops before submit
 			 */
 			$editForm.on('submit', function(event) {
+				const targetType = $('input[name="target_type"]:checked').val() || 'internal';
 				const toVal = $toInput.val().trim();
 				const pageVal = $pageSelect.val() ? $pageSelect.val().trim() : '';
 
-				// Ensure target destination is provided
-				if (toVal === '' && pageVal === '') {
-					event.preventDefault();
-					const alertMsg = labels.noRedirectTo || $editForm.attr('data-no-redirect-to') || 'Please select or enter target page.';
-					if (ProcessWire && ProcessWire.alert) {
-						ProcessWire.alert(alertMsg);
-					} else {
-						alert(alertMsg);
+				// Ensure target destination is provided based on destination type
+				if (targetType === 'internal') {
+					if (!pageVal || pageVal === '0') {
+						event.preventDefault();
+						const alertMsg = labels.noRedirectTo || $editForm.attr('data-no-redirect-to') || 'Please select target page.';
+						if (ProcessWire && ProcessWire.alert) {
+							ProcessWire.alert(alertMsg);
+						} else {
+							alert(alertMsg);
+						}
+						if (typeof Inputfields === 'object' && Inputfields.highlight) {
+							Inputfields.highlight('select_page');
+						}
+						return false;
 					}
-					if (typeof Inputfields === 'object' && Inputfields.highlight) {
-						Inputfields.highlight('select_page');
+				} else {
+					if (toVal === '') {
+						event.preventDefault();
+						const alertMsg = labels.noTargetUrl || $editForm.attr('data-no-target-url') || 'Please enter target URL.';
+						if (ProcessWire && ProcessWire.alert) {
+							ProcessWire.alert(alertMsg);
+						} else {
+							alert(alertMsg);
+						}
+						$toInput.focus();
+						return false;
 					}
-					return false;
 				}
 
 				// Prevent infinite redirect loops (Redirect From === Redirect To)
 				let fromNorm = $fromInput.val().trim().replace(/\/+$/, '');
-				let targetNorm = toVal;
+				let targetNorm = targetType === 'internal' ? (selectedPageUrl || '') : toVal;
 
 				try {
 					if (/^https?:\/\//i.test(targetNorm)) {
@@ -160,7 +176,9 @@
 					} else {
 						alert(loopMsg);
 					}
-					$toInput.focus();
+					if (targetType === 'external') {
+						$toInput.focus();
+					}
 					return false;
 				}
 			});

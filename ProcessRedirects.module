@@ -330,6 +330,9 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$to = '';
 		$code = (int) ($this->default_redirect_code ?: 301);
 		$active = 1;
+		$targetType = 'internal';
+		$targetPageId = 0;
+		$targetPageUrl = '';
 
 		// check if we're editing an existing record
 		if ($id > 0) {
@@ -347,16 +350,41 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 			}
 			$id = (int) $redirect['id'];
 			$from = (string) $redirect['redirect_from'];
-			$to = $this->makeRedirectToURL((string) $redirect['redirect_to']);
+			$rawTo = (string) $redirect['redirect_to'];
 			$code = $this->sanitizeRedirectCode($redirect['redirect_code'] ?? null, $code);
 			$active = isset($redirect['active']) ? (int) $redirect['active'] : 1;
+
+			if (strpos($rawTo, '^') === 0) {
+				$targetType = 'internal';
+				$targetPageId = (int) substr($rawTo, 1);
+				$target_page = $this->pages->get($targetPageId);
+				if ($target_page->id) {
+					$targetPageUrl = $target_page->url;
+				}
+				$to = '';
+			} else if (strpos($rawTo, '/') === 0) {
+				$target_page = $this->pages->get($rawTo);
+				if ($target_page->id && !$target_page->isTrash()) {
+					$targetType = 'internal';
+					$targetPageId = $target_page->id;
+					$targetPageUrl = $target_page->url;
+					$to = '';
+				} else {
+					$targetType = 'external';
+					$to = $rawTo;
+				}
+			} else {
+				$targetType = 'external';
+				$to = $rawTo;
+			}
 		}
 
 		/** @var InputfieldForm */
 		$form = $this->modules->get('InputfieldForm');
 		$form->method = 'post';
 		$form->id = 'ProcessRedirectsEditForm';
-		$form->attr('data-no-redirect-to', $this->_('Please select or enter target page.'));
+		$form->attr('data-no-redirect-to', $this->_('Please select target page.'));
+		$form->attr('data-no-target-url', $this->_('Please enter target URL.'));
 		$form->attr('data-loop-error', $this->_('Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).'));
 		$form->action = '../save/';
 
@@ -380,31 +408,37 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$field->value = $from;
 		$form->add($field);
 
+		/** @var InputfieldRadios */
+		$field = $this->modules->get('InputfieldRadios');
+		$field->label = $this->_('Destination Type');
+		$field->name = 'target_type';
+		$field->id = 'target_type';
+		$field->addOption('internal', $this->_('Internal Page'));
+		$field->addOption('external', $this->_('External URL or Custom Path'));
+		$field->value = $targetType;
+		$form->add($field);
+
 		/** @var InputfieldPageListSelect */
 		$field = $this->modules->get('InputfieldPageListSelect');
-		$field->label = $this->_('Select Page to Redirect To');
+		$field->label = $this->_('Target Page');
 		$field->attr('id+name', 'select_page');
 		$field->startLabel = $this->_('Select Page');
 		$field->parent_id = 0; // tell it to start from homepage
-		if (strpos($to, '/') === 0) {
-			// if a value is already set determine if it's a page, in which case populate the input with the page_id
-			$page = $this->pages->get($to);
-			if ($page->id) {
-				$field->value = $page->id;
-			}
-		} else {
-			$page = $this->pages->newNullPage();
+		$field->value = $targetPageId;
+		$field->showIf = 'target_type=internal';
+		if ($targetPageUrl) {
+			$field->attr('data-url', $targetPageUrl);
 		}
 		$form->add($field);
 
 		/** @var InputfieldURL */
 		$field = $this->modules->get('InputfieldURL');
-		$field->label = $this->_('or type URL here');
-		$field->description = $this->_('Enter a valid URL, i.e. www.otherdomain.com/dir/ or relative URL like /season/summer/');
+		$field->label = $this->_('Target URL or Path');
+		$field->description = $this->_('Enter a valid URL (e.g. https://www.otherdomain.com/) or relative path.');
 		$field->name = 'redirect_to';
 		$field->id = 'redirect_to';
-		$field->collapsed = $page->id || $id == 0 ? 1 : 0;
 		$field->value = $to;
+		$field->showIf = 'target_type=external';
 		$form->add($field);
 
 		/** @var InputfieldSelect */
@@ -573,16 +607,33 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		// read arguments from POST data
 		$id = (int) $this->input->post->id;
 		$from = (string) $this->input->post->redirect_from;
-		$to = (string) $this->input->post->redirect_to;
+		$targetType = (string) $this->input->post->target_type ?: 'internal';
 		$defaultCode = (int) ($this->default_redirect_code ?: 301);
 		$code = $this->sanitizeRedirectCode($this->input->post->redirect_code, $defaultCode);
 		$active = $this->input->post->active ? 1 : 0;
 
-		// fall back to select_page value if redirect_to is empty
-		if (empty($to) && $this->input->post->select_page && (int) $this->input->post->select_page == $this->input->post->select_page) {
-			$select_page = $this->pages->get((int) $this->input->post->select_page);
-			if ($select_page->id && !$select_page->isTrash() && $select_page->viewable()) {
-				$to = $select_page->url;
+		$to = '';
+		if ($targetType === 'internal') {
+			$pageId = (int) $this->input->post->select_page;
+			if ($pageId > 0) {
+				$select_page = $this->pages->get($pageId);
+				if ($select_page->id && !$select_page->isTrash() && $select_page->viewable()) {
+					$to = $select_page->url;
+				}
+			}
+		} else {
+			$to = (string) $this->input->post->redirect_to;
+		}
+
+		// Fallback for safety if target_type was not specified or if target value was empty
+		if ($to === '') {
+			if (!empty($this->input->post->redirect_to)) {
+				$to = (string) $this->input->post->redirect_to;
+			} else if ($this->input->post->select_page && (int) $this->input->post->select_page == $this->input->post->select_page) {
+				$select_page = $this->pages->get((int) $this->input->post->select_page);
+				if ($select_page->id && !$select_page->isTrash() && $select_page->viewable()) {
+					$to = $select_page->url;
+				}
 			}
 		}
 
@@ -941,7 +992,8 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 				],
 			],
 			'labels' => [
-				'noRedirectTo' => $this->_('Please select or enter target page.'),
+				'noRedirectTo' => $this->_('Please select target page.'),
+				'noTargetUrl' => $this->_('Please enter target URL.'),
 				'loopError' => $this->_('Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).'),
 				'alertSelect' => $this->_('You need to select at least one item to delete first.'),
 				'confirmDelete' => $this->_('Are you sure you want to delete selected redirects?'),
