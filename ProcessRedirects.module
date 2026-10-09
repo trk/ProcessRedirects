@@ -177,6 +177,9 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		// load vex
 		$this->wire('modules')->get('JqueryUI')->use('vex');
 
+		// pass localized configuration to JS
+		$this->setupJsConfig();
+
 		// load admin.js
 		if ($this->config->scripts) {
 			$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
@@ -311,6 +314,9 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		// load vex
 		$this->wire('modules')->get('JqueryUI')->use('vex');
 
+		// pass localized configuration to JS
+		$this->setupJsConfig();
+
 		// load admin.js
 		if ($this->config->scripts) {
 			$this->config->scripts->add($this->config->urls->ProcessRedirects . 'js/admin.js');
@@ -348,7 +354,7 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		$form = $this->modules->get('InputfieldForm');
 		$form->method = 'post';
 		$form->id = 'ProcessRedirectsEditForm';
-		$form->attr('data-no-redirect-to', $this->_('Please select target page.'));
+		$form->attr('data-no-redirect-to', $this->_('Please select or enter target page.'));
 		$form->attr('data-loop-error', $this->_('Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).'));
 		$form->action = '../save/';
 
@@ -901,6 +907,43 @@ class ProcessRedirects extends Process implements ConfigurableModule {
 		} else {
 			$this->session->redirect($redirect_to, $redirect_code === 301);
 		}
+	}
+
+	/**
+	 * Setup JavaScript configuration and localized strings for admin scripts.
+	 */
+	protected function setupJsConfig(): void {
+		$this->config->js('ProcessRedirects', [
+			'codeDescriptions' => [
+				301 => [
+					'type' => 'success',
+					'text' => $this->_('301 Moved Permanently: Best for permanent SEO changes. Fully cached by browsers and search engines; passes link equity.'),
+				],
+				302 => [
+					'type' => 'warning',
+					'text' => $this->_('302 Found (Temporary): Standard temporary redirect. Search engines maintain the original URL in the index.'),
+				],
+				303 => [
+					'type' => 'primary',
+					'text' => $this->_('303 See Other: Directs client to target using HTTP GET method. Ideal for Post/Redirect/Get patterns.'),
+				],
+				307 => [
+					'type' => 'warning',
+					'text' => $this->_('307 Temporary Redirect: Modern temporary redirect strictly preserving HTTP request method (POST remains POST).'),
+				],
+				308 => [
+					'type' => 'success',
+					'text' => $this->_('308 Permanent Redirect: Modern permanent redirect strictly preserving HTTP request method and caching behavior.'),
+				],
+			],
+			'labels' => [
+				'noRedirectTo' => $this->_('Please select or enter target page.'),
+				'loopError' => $this->_('Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).'),
+				'alertSelect' => $this->_('You need to select at least one item to delete first.'),
+				'confirmDelete' => $this->_('Are you sure you want to delete selected redirects?'),
+				'noResults' => $this->_('No redirects matching your search.'),
+			],
+		]);
 	}
 
 	/**

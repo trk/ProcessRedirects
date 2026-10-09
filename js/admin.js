@@ -9,6 +9,11 @@
 
 	$(function() {
 
+		// Read localized settings & translations passed from ProcessRedirects.module via $config->js()
+		const jsConfig = (ProcessWire && ProcessWire.config && ProcessWire.config.ProcessRedirects) || {};
+		const labels = jsConfig.labels || {};
+		const localizedCodeDescriptions = jsConfig.codeDescriptions || {};
+
 		// =========================================================================
 		// 1. EDIT / ADD FORM: Smart URL Normalization & Validation
 		// =========================================================================
@@ -62,8 +67,8 @@
 
 		if ($codeSelect.length) {
 
-			// HTTP Status code explanations
-			const codeDescriptions = {
+			// Default HTTP Status code explanations (fallback if translations not loaded)
+			const defaultCodeDescriptions = {
 				301: {
 					type: 'success',
 					text: '301 Moved Permanently: Best for permanent SEO changes. Fully cached by browsers and search engines; passes link equity.'
@@ -86,6 +91,9 @@
 				}
 			};
 
+			// Merge server-provided localized explanations over defaults
+			const codeDescriptions = $.extend(true, {}, defaultCodeDescriptions, localizedCodeDescriptions);
+
 			const $helpContainer = $('<div id="redirect_code_help" class="uk-margin-small-top" style="font-size: 12px; line-height: 1.4; color: #666; max-width: 600px;"></div>');
 			$codeSelect.after($helpContainer);
 
@@ -93,7 +101,9 @@
 				const selectedCode = parseInt($codeSelect.val(), 10);
 				const info = codeDescriptions[selectedCode];
 				if (info) {
-					$helpContainer.html('<i class="fa fa-info-circle uk-margin-small-right" aria-hidden="true"></i>' + info.text);
+					$helpContainer.empty();
+					$helpContainer.append($('<i class="fa fa-info-circle uk-margin-small-right" aria-hidden="true"></i>'));
+					$helpContainer.append(document.createTextNode(info.text));
 				} else {
 					$helpContainer.empty();
 				}
@@ -115,7 +125,7 @@
 				// Ensure target destination is provided
 				if (toVal === '' && pageVal === '') {
 					event.preventDefault();
-					const alertMsg = $editForm.attr('data-no-redirect-to') || 'Please select or enter target page.';
+					const alertMsg = labels.noRedirectTo || $editForm.attr('data-no-redirect-to') || 'Please select or enter target page.';
 					if (ProcessWire && ProcessWire.alert) {
 						ProcessWire.alert(alertMsg);
 					} else {
@@ -144,7 +154,7 @@
 
 				if (fromNorm && targetNorm && fromNorm === targetNorm) {
 					event.preventDefault();
-					const loopMsg = $editForm.attr('data-loop-error') || 'Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).';
+					const loopMsg = labels.loopError || $editForm.attr('data-loop-error') || 'Redirect From and Redirect To cannot be identical (would cause an infinite redirect loop).';
 					if (ProcessWire && ProcessWire.alert) {
 						ProcessWire.alert(loopMsg);
 					} else {
@@ -204,9 +214,10 @@
 					$table.find('.redirects-no-results').remove();
 					if (visibleCount === 0) {
 						const colSpan = $table.find('thead th').length || 7;
-						$table.find('tbody').append(
-							'<tr class="redirects-no-results"><td colspan="' + colSpan + '" class="uk-text-center uk-text-muted" style="padding: 24px;">No redirects matching your search.</td></tr>'
-						);
+						const noResultsMsg = labels.noResults || 'No redirects matching your search.';
+						const $noResultsRow = $('<tr class="redirects-no-results"><td class="uk-text-center uk-text-muted" style="padding: 24px;"></td></tr>');
+						$noResultsRow.find('td').attr('colspan', colSpan).text(noResultsMsg);
+						$table.find('tbody').append($noResultsRow);
 					}
 
 					$searchCount.text(visibleCount + ' / ' + totalRows).show();
@@ -277,7 +288,7 @@
 				const $checked = $redirectsForm.find('input[name="delete[]"]:checked');
 				if (!$checked.length) {
 					event.preventDefault();
-					const alertMsg = $redirectsForm.attr('data-alert-select') || 'You need to select at least one item to delete first.';
+					const alertMsg = labels.alertSelect || $redirectsForm.attr('data-alert-select') || 'You need to select at least one item to delete first.';
 					if (ProcessWire && ProcessWire.alert) {
 						ProcessWire.alert(alertMsg);
 					} else {
@@ -287,7 +298,7 @@
 				}
 
 				event.preventDefault();
-				const confirmMsg = $redirectsForm.attr('data-confirm-delete') || 'Are you sure you want to delete selected redirects?';
+				const confirmMsg = labels.confirmDelete || $redirectsForm.attr('data-confirm-delete') || 'Are you sure you want to delete selected redirects?';
 
 				if (ProcessWire && ProcessWire.confirm) {
 					ProcessWire.confirm(confirmMsg, function() {
